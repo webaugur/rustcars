@@ -29,10 +29,9 @@ fn gesture_resolution() {
     assert_eq!(Mode::Alt1.after_gesture(2), Mode::Inactive);
     assert_eq!(Mode::Alt2.after_gesture(3), Mode::Inactive);
     assert_eq!(Mode::Alt2.after_gesture(5), Mode::Inactive);
-    // every active mode has a non-color indicator
-    for m in [Mode::Primary, Mode::Alt1, Mode::Alt2] {
-        assert!(!m.tag().is_empty());
-    }
+    // every mode has a distinct pip count (non-color indicator), never more than 3
+    let pips: Vec<u8> = Mode::ALL.iter().map(|m| m.pips()).collect();
+    assert_eq!(pips, vec![0, 1, 2, 3]);
 }
 
 fn check(name: &str, fg: Color32, bg: Color32, min: f32, out: &mut Vec<String>) {
@@ -52,6 +51,13 @@ fn wcag_contrast() {
         let c = m.colors();
         let n = format!("{m:?}");
         check(&format!("{n} label (text)"), c.label, c.fill, 4.5, &mut out);
+        check(
+            &format!("{n} pips vs fill (1.4.11)"),
+            c.label,
+            c.fill,
+            3.0,
+            &mut out,
+        );
         check(
             &format!("{n} border vs fill (1.4.11)"),
             c.border,

@@ -33,12 +33,12 @@ Reference screenshots: IMG1 buttons (LOAD/SAVE/SCAN/DWELL), IMG2 tab palette (Tu
 ### P2. Click-count modes
 - One control, one function, up to three operating modes:
 
-| Gesture | Mode | Color | Tag |
+| Gesture | Mode | Color | Pips |
 |---|---|---|---|
 | none | Inactive | gray | – |
-| single click | Primary selection | green | `SEL` |
-| double click | Alternate 1 | orange | `ALT1` |
-| triple click | Alternate 2 | purple | `ALT2` |
+| single click | Primary selection | green | · (1) |
+| double click | Alternate 1 | orange | ∶ (2, stacked) |
+| triple click | Alternate 2 | purple | ⁖ (3, triangle) |
 
 - **Never more than triple.** `Mode::from_clicks(n)` maps n ≥ 3 to Alt2. Extra clicks in the same gesture (4th, 5th, …) are absorbed and don't cycle.
 - **Deactivating:** repeating the gesture of the current mode turns the control off (Inactive). A different gesture switches directly to that mode. For example, if a button is in Alt1, a double click turns it off and a single click switches it to Primary. Implementation: `Mode::after_gesture`.
@@ -52,7 +52,16 @@ Reference screenshots: IMG1 buttons (LOAD/SAVE/SCAN/DWELL), IMG2 tab palette (Tu
   - Ctrl/Cmd+click or Ctrl/Cmd+Enter = Alt2, applied immediately.
   - Right-click (or long-press) opens a context menu listing every mode by name, including Off.
   - Focused controls get a visible focus ring.
-- **Never rely on color alone:** every active mode also shows its text tag (`SEL`/`ALT1`/`ALT2`).
+- **Never rely on color alone:** every active mode also shows **mode pips**: 1 dot (·), 2 dots stacked vertically (∶) or 3 dots in a triangle (⁖). Inactive shows none.
+  - **Placement:** right side of the button or row, vertically centred, 10 px from the right edge.
+  - **Size:** radius = 0.13 × text height (min 1.5 px), spacing 2.6 × radius.
+  - **Color:** the state's label color, which reaches ≥ 3:1 against the fill (SC 1.4.11). The pairs are 8.49–13.36:1 (see the table).
+  - **Painted, not text:** pips use `Painter::circle_filled` (`paint_pips`). We checked the Unicode characters U+00B7 ·, U+2236 ∶ and U+2056 ⁖ with fontTools against the fonts actually in use (Antonio, and egui's built-in Ubuntu-Light, Hack, NotoEmoji and emoji-icon fonts):
+    - · is in Antonio, Ubuntu-Light and Hack.
+    - ∶ is only in Hack.
+    - ⁖ is in **none** of them.
+    - As text, ⁖ would show as a missing-glyph box, and the pips would look different from font to font. Dice faces ⚀⚁⚂ were also considered and rejected for the same coverage reason, and because they read as decoration.
+  - **Screen readers:** the mode name is exposed through AccessKit widget info, e.g. "Scan, mode Alt 1". Mode names are also listed in the context menu.
 
 ### P3. Palette (IMG2) and WCAG 2.2 AA
 - **Sampled colors:**
@@ -74,18 +83,22 @@ Reference screenshots: IMG1 buttons (LOAD/SAVE/SCAN/DWELL), IMG2 tab palette (Tu
 | Pair | Colors | Ratio | Minimum |
 |---|---|---|---|
 | Inactive label (text) | #e8e4d8ff on #1c1c20ff | 13.36:1 | 4.5:1 |
+| Inactive pips vs fill (1.4.11) | #e8e4d8ff on #1c1c20ff | 13.36:1 | 3:1 |
 | Inactive border vs fill (1.4.11) | #7a7a82ff on #1c1c20ff | 3.99:1 | 3:1 |
 | Inactive border vs BG (1.4.11) | #7a7a82ff on #1b1b1bff | 4.05:1 | 3:1 |
 | Inactive border vs SURFACE (1.4.11) | #7a7a82ff on #202020ff | 3.83:1 | 3:1 |
 | Primary label (text) | #96e68cff on #123a1cff | 8.49:1 | 4.5:1 |
+| Primary pips vs fill (1.4.11) | #96e68cff on #123a1cff | 8.49:1 | 3:1 |
 | Primary border vs fill (1.4.11) | #2eb04eff on #123a1cff | 4.51:1 | 3:1 |
 | Primary border vs BG (1.4.11) | #2eb04eff on #1b1b1bff | 6.10:1 | 3:1 |
 | Primary border vs SURFACE (1.4.11) | #2eb04eff on #202020ff | 5.77:1 | 3:1 |
 | Alt1 label (text) | #ffc27aff on #3d2410ff | 9.09:1 | 4.5:1 |
+| Alt1 pips vs fill (1.4.11) | #ffc27aff on #3d2410ff | 9.09:1 | 3:1 |
 | Alt1 border vs fill (1.4.11) | #e08a2eff on #3d2410ff | 5.38:1 | 3:1 |
 | Alt1 border vs BG (1.4.11) | #e08a2eff on #1b1b1bff | 6.43:1 | 3:1 |
 | Alt1 border vs SURFACE (1.4.11) | #e08a2eff on #202020ff | 6.09:1 | 3:1 |
 | Alt2 label (text) | #dcaaffff on #2a1040ff | 9.01:1 | 4.5:1 |
+| Alt2 pips vs fill (1.4.11) | #dcaaffff on #2a1040ff | 9.01:1 | 3:1 |
 | Alt2 border vs fill (1.4.11) | #a860d6ff on #2a1040ff | 4.26:1 | 3:1 |
 | Alt2 border vs BG (1.4.11) | #a860d6ff on #1b1b1bff | 4.35:1 | 3:1 |
 | Alt2 border vs SURFACE (1.4.11) | #a860d6ff on #202020ff | 4.12:1 | 3:1 |
@@ -108,9 +121,9 @@ Reference screenshots: IMG1 buttons (LOAD/SAVE/SCAN/DWELL), IMG2 tab palette (Tu
 - The disabled "OFF" segment is dimmed on purpose. WCAG exempts inactive components from contrast requirements.
 
 ### P4. Lists (IMG3)
-- List rows behave exactly like mode buttons: same gestures, modes, colors, tags, keyboard shortcuts and context menu. Implementation: `mode_list()`.
+- List rows behave exactly like mode buttons: same gestures, modes, colors, pips, keyboard shortcuts and context menu. Implementation: `mode_list()`.
 - Inactive rows are flat `#202020` with muted text and no border. They show a gray border only on hover.
-- Activated rows get the state's tinted fill plus a **thin 1 px border** (like the purple selection in IMG3) and a right-aligned mode tag.
+- Activated rows get the state's tinted fill plus a **thin 1 px border** (like the purple selection in IMG3) and right-aligned mode pips.
 
 ## 1. Philosophy
 - [MANIFESTO] "The Perfect LCARS System is Invisible." LCARS for real applications puts function first. Decoration must never get in the way of operation.
@@ -291,13 +304,24 @@ impl Mode {
         if m == self { Mode::Inactive } else { m }
     }
 
-    /// Non-color indicator text (never rely on color alone).
-    pub fn tag(self) -> &'static str {
+    /// Number of indicator pips (non-color mode indicator): 0, 1, 2 or 3.
+    /// Arrangements follow U+00B7 · (1), U+2236 ∶ (2, vertical pair), U+2056 ⁖ (3, triangle).
+    pub fn pips(self) -> u8 {
         match self {
-            Mode::Inactive => "",
-            Mode::Primary => "SEL",
-            Mode::Alt1 => "ALT1",
-            Mode::Alt2 => "ALT2",
+            Mode::Inactive => 0,
+            Mode::Primary => 1,
+            Mode::Alt1 => 2,
+            Mode::Alt2 => 3,
+        }
+    }
+
+    /// Short mode name for screen readers ("Scan, mode Alt 1").
+    pub fn short_name(self) -> &'static str {
+        match self {
+            Mode::Inactive => "Off",
+            Mode::Primary => "Select",
+            Mode::Alt1 => "Alt 1",
+            Mode::Alt2 => "Alt 2",
         }
     }
 
@@ -927,26 +951,42 @@ fn paint_mode_surface(
             label_col,
         );
     }
-    let tag = mode.tag();
-    if !tag.is_empty() {
-        let pos = if center {
-            pos2(rect.right() - 4.0, rect.top() + 2.0)
-        } else {
-            pos2(rect.right() - 8.0, rect.center().y)
-        };
-        let align = if center {
-            Align2::RIGHT_TOP
-        } else {
-            Align2::RIGHT_CENTER
-        };
-        p.text(
-            pos,
-            align,
-            tag,
-            FontId::monospace(t.data_size * 0.8),
-            c.label,
-        );
+    // Pips are painted, not text: U+2056 ⁖ is missing from Antonio, Ubuntu-Light and Hack,
+    // and U+2236 ∶ is only in Hack (see AGENTS.md P2).
+    paint_pips(
+        ui,
+        pos2(rect.right() - 10.0, rect.center().y),
+        t.data_size,
+        mode.pips(),
+        c.label,
+    );
+}
+
+/// Paint 0-3 mode pips centred at `center`, sized from the text height `text_h`,
+/// in the arrangements of · (1), ∶ (2, stacked vertically) and ⁖ (3, triangle: one on top, two below).
+pub fn paint_pips(ui: &Ui, center: egui::Pos2, text_h: f32, n: u8, color: Color32) {
+    let r = (text_h * 0.13).max(1.5);
+    let d = r * 2.6; // centre-to-centre spacing
+    let offsets: &[Vec2] = match n {
+        1 => &[Vec2::ZERO],
+        2 => &[vec2(0.0, -d / 2.0), vec2(0.0, d / 2.0)],
+        3 => &[
+            vec2(0.0, -d / 2.0),
+            vec2(-d / 2.0, d / 2.0),
+            vec2(d / 2.0, d / 2.0),
+        ],
+        _ => &[],
+    };
+    for o in offsets {
+        ui.painter().circle_filled(center + *o, r, color);
     }
+}
+
+/// Accessible label, e.g. "Scan, mode Alt 1".
+fn a11y(resp: &Response, ui: &Ui, label: &str, mode: Mode) {
+    let text = format!("{label}, mode {}", mode.short_name());
+    let enabled = ui.is_enabled();
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, enabled, &text));
 }
 
 /// [PROJECT] mode button (IMG1 style). Returns the response; `mode` is updated in place.
@@ -961,6 +1001,7 @@ pub fn mode_button(
     if handle_mode(ui, &resp, mode) {
         resp.mark_changed();
     }
+    a11y(&resp, ui, label, *mode);
     paint_mode_surface(ui, t, rect, *mode, label, resp.hovered(), false);
     if resp.has_focus() {
         ui.painter().rect_stroke(
@@ -988,6 +1029,7 @@ pub fn mode_list(
                 let (rect, resp) =
                     ui.allocate_exact_size(vec2(ui.available_width(), row_h), Sense::click());
                 handle_mode(ui, &resp, mode);
+                a11y(&resp, ui, label, *mode);
                 paint_mode_surface(ui, t, rect, *mode, label, resp.hovered(), true);
                 if resp.has_focus() {
                     ui.painter().rect_stroke(
@@ -1193,10 +1235,9 @@ fn gesture_resolution() {
     assert_eq!(Mode::Alt1.after_gesture(2), Mode::Inactive);
     assert_eq!(Mode::Alt2.after_gesture(3), Mode::Inactive);
     assert_eq!(Mode::Alt2.after_gesture(5), Mode::Inactive);
-    // every active mode has a non-color indicator
-    for m in [Mode::Primary, Mode::Alt1, Mode::Alt2] {
-        assert!(!m.tag().is_empty());
-    }
+    // every mode has a distinct pip count (non-color indicator), never more than 3
+    let pips: Vec<u8> = Mode::ALL.iter().map(|m| m.pips()).collect();
+    assert_eq!(pips, vec![0, 1, 2, 3]);
 }
 
 fn check(name: &str, fg: Color32, bg: Color32, min: f32, out: &mut Vec<String>) {
@@ -1216,6 +1257,13 @@ fn wcag_contrast() {
         let c = m.colors();
         let n = format!("{m:?}");
         check(&format!("{n} label (text)"), c.label, c.fill, 4.5, &mut out);
+        check(
+            &format!("{n} pips vs fill (1.4.11)"),
+            c.label,
+            c.fill,
+            3.0,
+            &mut out,
+        );
         check(
             &format!("{n} border vs fill (1.4.11)"),
             c.border,
@@ -1328,7 +1376,7 @@ Notes:
 
 ## 10. Agent checklist (Grok Build)
 **Do**
-- [ ] [PROJECT] Build function buttons and list rows with `mode_button`/`mode_list`: IMG1 style, gray/green/orange/purple modes, never a 4th mode, mode tags, keyboard and context-menu access.
+- [ ] [PROJECT] Build function buttons and list rows with `mode_button`/`mode_list`: IMG1 style, gray/green/orange/purple modes, never a 4th mode, painted mode pips plus AccessKit mode names, keyboard and context-menu access.
 - [ ] [PROJECT] Take colors from `palette::*` and `Mode::colors()`, and keep `tests/modes.rs` passing whenever you change a color.
 - [ ] Use one `LcarsTheme` as the source of all colors, sizes and gaps. No inline literals.
 - [ ] Vary thickness at every elbow, and draw elbows from primitives proportional to thickness.

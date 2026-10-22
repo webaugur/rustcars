@@ -82,13 +82,24 @@ impl Mode {
         if m == self { Mode::Inactive } else { m }
     }
 
-    /// Non-color indicator text (never rely on color alone).
-    pub fn tag(self) -> &'static str {
+    /// Number of indicator pips (non-color mode indicator): 0, 1, 2 or 3.
+    /// Arrangements follow U+00B7 · (1), U+2236 ∶ (2, vertical pair), U+2056 ⁖ (3, triangle).
+    pub fn pips(self) -> u8 {
         match self {
-            Mode::Inactive => "",
-            Mode::Primary => "SEL",
-            Mode::Alt1 => "ALT1",
-            Mode::Alt2 => "ALT2",
+            Mode::Inactive => 0,
+            Mode::Primary => 1,
+            Mode::Alt1 => 2,
+            Mode::Alt2 => 3,
+        }
+    }
+
+    /// Short mode name for screen readers ("Scan, mode Alt 1").
+    pub fn short_name(self) -> &'static str {
+        match self {
+            Mode::Inactive => "Off",
+            Mode::Primary => "Select",
+            Mode::Alt1 => "Alt 1",
+            Mode::Alt2 => "Alt 2",
         }
     }
 
@@ -718,26 +729,42 @@ fn paint_mode_surface(
             label_col,
         );
     }
-    let tag = mode.tag();
-    if !tag.is_empty() {
-        let pos = if center {
-            pos2(rect.right() - 4.0, rect.top() + 2.0)
-        } else {
-            pos2(rect.right() - 8.0, rect.center().y)
-        };
-        let align = if center {
-            Align2::RIGHT_TOP
-        } else {
-            Align2::RIGHT_CENTER
-        };
-        p.text(
-            pos,
-            align,
-            tag,
-            FontId::monospace(t.data_size * 0.8),
-            c.label,
-        );
+    // Pips are painted, not text: U+2056 ⁖ is missing from Antonio, Ubuntu-Light and Hack,
+    // and U+2236 ∶ is only in Hack (see AGENTS.md P2).
+    paint_pips(
+        ui,
+        pos2(rect.right() - 10.0, rect.center().y),
+        t.data_size,
+        mode.pips(),
+        c.label,
+    );
+}
+
+/// Paint 0-3 mode pips centred at `center`, sized from the text height `text_h`,
+/// in the arrangements of · (1), ∶ (2, stacked vertically) and ⁖ (3, triangle: one on top, two below).
+pub fn paint_pips(ui: &Ui, center: egui::Pos2, text_h: f32, n: u8, color: Color32) {
+    let r = (text_h * 0.13).max(1.5);
+    let d = r * 2.6; // centre-to-centre spacing
+    let offsets: &[Vec2] = match n {
+        1 => &[Vec2::ZERO],
+        2 => &[vec2(0.0, -d / 2.0), vec2(0.0, d / 2.0)],
+        3 => &[
+            vec2(0.0, -d / 2.0),
+            vec2(-d / 2.0, d / 2.0),
+            vec2(d / 2.0, d / 2.0),
+        ],
+        _ => &[],
+    };
+    for o in offsets {
+        ui.painter().circle_filled(center + *o, r, color);
     }
+}
+
+/// Accessible label, e.g. "Scan, mode Alt 1".
+fn a11y(resp: &Response, ui: &Ui, label: &str, mode: Mode) {
+    let text = format!("{label}, mode {}", mode.short_name());
+    let enabled = ui.is_enabled();
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, enabled, &text));
 }
 
 /// [PROJECT] mode button (IMG1 style). Returns the response; `mode` is updated in place.
@@ -752,6 +779,7 @@ pub fn mode_button(
     if handle_mode(ui, &resp, mode) {
         resp.mark_changed();
     }
+    a11y(&resp, ui, label, *mode);
     paint_mode_surface(ui, t, rect, *mode, label, resp.hovered(), false);
     if resp.has_focus() {
         ui.painter().rect_stroke(
@@ -779,6 +807,7 @@ pub fn mode_list(
                 let (rect, resp) =
                     ui.allocate_exact_size(vec2(ui.available_width(), row_h), Sense::click());
                 handle_mode(ui, &resp, mode);
+                a11y(&resp, ui, label, *mode);
                 paint_mode_surface(ui, t, rect, *mode, label, resp.hovered(), true);
                 if resp.has_focus() {
                     ui.painter().rect_stroke(
