@@ -8,6 +8,115 @@ use egui::{
 };
 use std::sync::Arc;
 
+// ---------------------------------------------------------------- palette
+/// [PROJECT] palette. Base hues sampled from the user's reference screenshots (IMG2 tabs,
+/// IMG1 buttons, IMG3 lists). Frame hues are brightened variants of the sampled tab colors so
+/// that bars/segments reach >= 3:1 against the background (WCAG 2.2 SC 1.4.11).
+pub mod palette {
+    use egui::Color32;
+    /// Page background (sampled IMG1/IMG3 #1B1B1B).
+    pub const BG: Color32 = Color32::from_rgb(0x1B, 0x1B, 0x1B);
+    /// List row / surface (sampled IMG3 #202020).
+    pub const SURFACE: Color32 = Color32::from_rgb(0x20, 0x20, 0x20);
+    /// Tab strip (sampled IMG2 #303030).
+    pub const STRIP: Color32 = Color32::from_rgb(0x30, 0x30, 0x30);
+    // Frame / tab hues: (sampled -> UI variant with >= 3:1 vs BG)
+    /// Tan "Tune" (sampled #9C805A, already 4.63:1).
+    pub const TAN: Color32 = Color32::from_rgb(0x9C, 0x80, 0x5A);
+    /// Slate blue "Plan" (sampled #3A4E66).
+    pub const SLATE: Color32 = Color32::from_rgb(0x51, 0x6D, 0x8F);
+    /// Olive "Channels" (sampled #56603A).
+    pub const OLIVE: Color32 = Color32::from_rgb(0x64, 0x6F, 0x43);
+    /// Brick "Meters" (sampled #70463E).
+    pub const BRICK: Color32 = Color32::from_rgb(0x94, 0x5C, 0x52);
+    /// Teal "Levels" (sampled #345A54).
+    pub const TEAL: Color32 = Color32::from_rgb(0x43, 0x73, 0x6C);
+    /// Plum "Config" (sampled #604666).
+    pub const PLUM: Color32 = Color32::from_rgb(0x81, 0x5E, 0x89);
+    /// Normal text (warm light).
+    pub const TEXT: Color32 = Color32::from_rgb(0xD9, 0xC7, 0xA8);
+    /// Muted text for inactive list rows (sampled IMG3 #8B8B8B, lightened).
+    pub const TEXT_MUTED: Color32 = Color32::from_rgb(0x9A, 0x9A, 0x9A);
+}
+
+/// Colors for one interaction state: dark tinted fill, 1px border, label.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct StateColors {
+    pub fill: Color32,
+    pub border: Color32,
+    pub label: Color32,
+}
+
+/// [PROJECT] click-count modes of one function.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Hash)]
+pub enum Mode {
+    /// Gray.
+    #[default]
+    Inactive,
+    /// Single click: primary selection, green.
+    Primary,
+    /// Double click: alternate 1, orange.
+    Alt1,
+    /// Triple click: alternate 2, purple.
+    Alt2,
+}
+
+impl Mode {
+    pub const ALL: [Mode; 4] = [Mode::Inactive, Mode::Primary, Mode::Alt1, Mode::Alt2];
+
+    /// Click count -> mode. 0 = Inactive; 4+ clamps to triple (Alt2); there is never a 4th mode.
+    pub fn from_clicks(n: u32) -> Mode {
+        match n {
+            0 => Mode::Inactive,
+            1 => Mode::Primary,
+            2 => Mode::Alt1,
+            _ => Mode::Alt2,
+        }
+    }
+
+    /// Resolve a finished click gesture against the current mode.
+    /// Rule: the gesture selects its mode; repeating the gesture of the *current* mode
+    /// toggles the control off (Inactive). Different gesture = switch mode directly.
+    pub fn after_gesture(self, clicks: u32) -> Mode {
+        let m = Mode::from_clicks(clicks);
+        if m == self { Mode::Inactive } else { m }
+    }
+
+    /// Non-color indicator text (never rely on color alone).
+    pub fn tag(self) -> &'static str {
+        match self {
+            Mode::Inactive => "",
+            Mode::Primary => "SEL",
+            Mode::Alt1 => "ALT1",
+            Mode::Alt2 => "ALT2",
+        }
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Mode::Inactive => "Off",
+            Mode::Primary => "Select (click)",
+            Mode::Alt1 => "Alt 1 (double-click / Shift)",
+            Mode::Alt2 => "Alt 2 (triple-click / Ctrl)",
+        }
+    }
+
+    /// State colors (IMG1-derived; orange added to fit). Ratios listed in AGENTS.md and tested.
+    pub fn colors(self) -> StateColors {
+        let c = |f: [u8; 3], b: [u8; 3], l: [u8; 3]| StateColors {
+            fill: Color32::from_rgb(f[0], f[1], f[2]),
+            border: Color32::from_rgb(b[0], b[1], b[2]),
+            label: Color32::from_rgb(l[0], l[1], l[2]),
+        };
+        match self {
+            Mode::Inactive => c([0x1C, 0x1C, 0x20], [0x7A, 0x7A, 0x82], [0xE8, 0xE4, 0xD8]),
+            Mode::Primary => c([0x12, 0x3A, 0x1C], [0x2E, 0xB0, 0x4E], [0x96, 0xE6, 0x8C]),
+            Mode::Alt1 => c([0x3D, 0x24, 0x10], [0xE0, 0x8A, 0x2E], [0xFF, 0xC2, 0x7A]),
+            Mode::Alt2 => c([0x2A, 0x10, 0x40], [0xA8, 0x60, 0xD6], [0xDC, 0xAA, 0xFF]),
+        }
+    }
+}
+
 // ---------------------------------------------------------------- theme
 #[derive(Clone, Copy)]
 pub struct LcarsTheme {
@@ -29,14 +138,15 @@ pub struct LcarsTheme {
 
 impl Default for LcarsTheme {
     fn default() -> Self {
+        use palette::*;
         Self {
-            bg: Color32::BLACK,
-            primary: Color32::from_rgb(0xFF, 0x99, 0x00),
-            secondary: Color32::from_rgb(0xCC, 0x99, 0xCC),
-            accent: Color32::from_rgb(0x99, 0x99, 0xFF),
-            alert: Color32::from_rgb(0xCC, 0x44, 0x44),
-            text: Color32::from_rgb(0xFF, 0x99, 0x00),
-            text_hi: Color32::from_rgb(0xFF, 0xCC, 0x99),
+            bg: BG,
+            primary: TAN,
+            secondary: SLATE,
+            accent: TEAL,
+            alert: BRICK,
+            text: TEXT,
+            text_hi: Mode::Primary.colors().label,
             bar_thick: 120.0,
             bar_thin: 40.0,
             frame_gap: 4.0,
@@ -76,6 +186,11 @@ pub fn luminance(c: Color32) -> f32 {
 }
 
 /// Auto ink: black on light fills, white on dark fills (whichever has higher contrast).
+pub fn contrast(a: Color32, b: Color32) -> f32 {
+    let (la, lb) = (luminance(a), luminance(b));
+    (la.max(lb) + 0.05) / (la.min(lb) + 0.05)
+}
+
 pub fn ink_on(fill: Color32) -> Color32 {
     let l = luminance(fill);
     let vs_black = (l + 0.05) / 0.05;
@@ -481,6 +596,203 @@ impl LcarsFrame {
     }
 }
 
+// ---------------------------------------------------------------- mode buttons & lists
+#[derive(Clone, Copy, Default)]
+struct Pending {
+    clicks: u32,
+    last: f64,
+    committed: bool,
+}
+
+/// Shared click-count state machine for buttons and list rows.
+/// * Pointer: egui's `clicked` / `double_clicked` / `triple_clicked` raise the pending count
+///   (1/2/3). The gesture is committed only after the double-click window
+///   (`InputOptions::max_double_click_delay`, 0.3 s default) passes without another click, or
+///   immediately on a triple click, so a triple click never also fires single/double actions.
+///   Clicks after a committed triple within the window are absorbed (clamp, no 4th mode).
+/// * Keyboard / accessibility: Shift+click or Shift+Enter = Alt1, Ctrl/Cmd+click or
+///   Ctrl/Cmd+Enter = Alt2 (both commit immediately); plain Enter/Space = Primary.
+///   A context menu (right-click / long-press) offers every mode by name.
+pub fn handle_mode(ui: &Ui, resp: &Response, mode: &mut Mode) -> bool {
+    let id = resp.id.with("lcars_mode");
+    let (now, mods) = ui.input(|i| (i.time, i.modifiers));
+    let delay = ui.ctx().options(|o| o.input_options.max_double_click_delay);
+    let mut p: Pending = ui.data(|d| d.get_temp(id)).unwrap_or_default();
+    let before = *mode;
+    if resp.clicked() {
+        if mods.shift || mods.command {
+            *mode = mode.after_gesture(if mods.command { 3 } else { 2 });
+            p = Pending {
+                clicks: 0,
+                last: now,
+                committed: true,
+            };
+        } else if p.committed && p.clicks == 3 && now - p.last < delay {
+            p.last = now; // absorb 4th+ click of a gesture
+        } else {
+            let n = if resp.triple_clicked() {
+                3
+            } else if resp.double_clicked() {
+                2
+            } else {
+                1
+            };
+            p = Pending {
+                clicks: n,
+                last: now,
+                committed: false,
+            };
+        }
+    }
+    if !p.committed && p.clicks > 0 {
+        if p.clicks >= 3 || now - p.last >= delay {
+            *mode = mode.after_gesture(p.clicks);
+            p.committed = true;
+        } else {
+            ui.ctx()
+                .request_repaint_after(std::time::Duration::from_secs_f64(delay));
+        }
+    }
+    resp.context_menu(|ui| {
+        for m in Mode::ALL {
+            if ui.selectable_label(*mode == m, m.name()).clicked() {
+                *mode = m;
+                ui.close();
+            }
+        }
+    });
+    ui.data_mut(|d| d.insert_temp(id, p));
+    *mode != before
+}
+
+/// Paint an IMG1-style surface: state-tinted dark fill, 1px state border, state label,
+/// plus a small mode tag (non-color indicator). Inactive list rows use `flat` (no border).
+fn paint_mode_surface(
+    ui: &Ui,
+    t: &LcarsTheme,
+    rect: Rect,
+    mode: Mode,
+    label: &str,
+    hovered: bool,
+    row: bool,
+) {
+    let c = mode.colors();
+    let p = ui.painter();
+    let (flat, center) = (row, !row);
+    let r = CornerRadius::same(4);
+    let fill = if flat && mode == Mode::Inactive {
+        palette::SURFACE
+    } else {
+        c.fill
+    };
+    let fill = if hovered { tint(fill, 0.08) } else { fill };
+    p.rect_filled(rect, r, fill);
+    if !(flat && mode == Mode::Inactive) || hovered {
+        p.rect_stroke(
+            rect,
+            r,
+            Stroke::new(1.0, c.border),
+            egui::StrokeKind::Inside,
+        );
+    }
+    let label_col = if flat && mode == Mode::Inactive {
+        palette::TEXT_MUTED
+    } else {
+        c.label
+    };
+    let font = FontId::monospace(t.data_size);
+    if center {
+        p.text(
+            rect.center(),
+            Align2::CENTER_CENTER,
+            label.to_uppercase(),
+            font.clone(),
+            label_col,
+        );
+    } else {
+        p.text(
+            pos2(rect.left() + 8.0, rect.center().y),
+            Align2::LEFT_CENTER,
+            label,
+            font.clone(),
+            label_col,
+        );
+    }
+    let tag = mode.tag();
+    if !tag.is_empty() {
+        let pos = if center {
+            pos2(rect.right() - 4.0, rect.top() + 2.0)
+        } else {
+            pos2(rect.right() - 8.0, rect.center().y)
+        };
+        let align = if center {
+            Align2::RIGHT_TOP
+        } else {
+            Align2::RIGHT_CENTER
+        };
+        p.text(
+            pos,
+            align,
+            tag,
+            FontId::monospace(t.data_size * 0.8),
+            c.label,
+        );
+    }
+}
+
+/// [PROJECT] mode button (IMG1 style). Returns the response; `mode` is updated in place.
+pub fn mode_button(
+    ui: &mut Ui,
+    t: &LcarsTheme,
+    label: &str,
+    mode: &mut Mode,
+    size: Vec2,
+) -> Response {
+    let (rect, mut resp) = ui.allocate_exact_size(size, Sense::click());
+    if handle_mode(ui, &resp, mode) {
+        resp.mark_changed();
+    }
+    paint_mode_surface(ui, t, rect, *mode, label, resp.hovered(), false);
+    if resp.has_focus() {
+        ui.painter().rect_stroke(
+            rect.expand(2.0),
+            CornerRadius::same(5),
+            Stroke::new(1.0, t.text),
+            egui::StrokeKind::Outside,
+        );
+    }
+    resp
+}
+
+/// [PROJECT] list with rows that behave like mode buttons (IMG3 style).
+pub fn mode_list(
+    ui: &mut Ui,
+    t: &LcarsTheme,
+    id_salt: &str,
+    rows: &mut [(String, Mode)],
+    row_h: f32,
+) {
+    ui.push_id(id_salt, |ui| {
+        ui.spacing_mut().item_spacing.y = 2.0;
+        for (i, (label, mode)) in rows.iter_mut().enumerate() {
+            ui.push_id(i, |ui| {
+                let (rect, resp) =
+                    ui.allocate_exact_size(vec2(ui.available_width(), row_h), Sense::click());
+                handle_mode(ui, &resp, mode);
+                paint_mode_surface(ui, t, rect, *mode, label, resp.hovered(), true);
+                if resp.has_focus() {
+                    ui.painter().rect_stroke(
+                        rect,
+                        CornerRadius::same(4),
+                        Stroke::new(1.0, t.text),
+                        egui::StrokeKind::Outside,
+                    );
+                }
+            });
+        }
+    });
+}
+
 // ---------------------------------------------------------------- readouts
 pub fn readout(ui: &mut Ui, t: &LcarsTheme, value: &str, highlight: bool) {
     let c = if highlight { t.text_hi } else { t.text };
@@ -488,76 +800,107 @@ pub fn readout(ui: &mut Ui, t: &LcarsTheme, value: &str, highlight: bool) {
 }
 
 // ---------------------------------------------------------------- demo
-pub fn demo(ui: &mut Ui, t: &LcarsTheme) {
+/// Demo state (kept by the caller so modes persist between frames).
+pub struct DemoState {
+    pub buttons: [(String, Mode); 4],
+    pub rows: Vec<(String, Mode)>,
+}
+
+impl Default for DemoState {
+    fn default() -> Self {
+        let b = |l: &str, m| (l.to_owned(), m);
+        Self {
+            buttons: [
+                b("Load", Mode::Inactive),
+                b("Dwell", Mode::Primary),
+                b("Save", Mode::Alt1),
+                b("Scan", Mode::Alt2),
+            ],
+            rows: [
+                ("1.024 West Lafayette", Mode::Inactive),
+                ("1.025 Geetingsville", Mode::Primary),
+                ("1.026 Covington", Mode::Inactive),
+                ("1.027 Newport", Mode::Alt1),
+                ("1.028 Marshall", Mode::Inactive),
+                ("1.031 Dalton", Mode::Alt2),
+                ("1.032 Hortonville", Mode::Inactive),
+            ]
+            .into_iter()
+            .map(|(l, m)| (l.to_owned(), m))
+            .collect(),
+        }
+    }
+}
+
+pub fn demo(ui: &mut Ui, t: &LcarsTheme, st: &mut DemoState) {
+    use palette::*;
     egui::Panel::top("lcars_header")
         .exact_size(t.bar_thin + t.main_gap)
         .frame(egui::Frame::new().fill(t.bg).inner_margin(t.frame_gap))
         .show(ui, |ui| {
             ui.horizontal(|ui| {
-                lcars_button(
-                    ui,
-                    t,
-                    "Main",
-                    t.primary,
-                    vec2(140.0, t.bar_thin),
-                    Cap::Left,
-                    true,
-                );
+                lcars_button(ui, t, "Tune", TAN, vec2(120.0, t.bar_thin), Cap::Left, true);
                 for (l, c) in [
-                    ("Nav", t.secondary),
-                    ("Comm", t.accent),
-                    ("Ops", t.secondary),
+                    ("Plan", SLATE),
+                    ("Channels", OLIVE),
+                    ("Meters", BRICK),
+                    ("Levels", TEAL),
+                    ("Config", PLUM),
                 ] {
                     lcars_button(ui, t, l, c, vec2(110.0, t.bar_thin), Cap::None, true);
                 }
                 ui.add_space(t.main_gap);
                 ui.label(
-                    egui::RichText::new("LCARS 47")
+                    egui::RichText::new("RUSTCARS")
                         .size(t.title_size)
-                        .color(t.primary),
-                );
-                lcars_button(
-                    ui,
-                    t,
-                    "",
-                    t.primary,
-                    vec2(60.0, t.bar_thin),
-                    Cap::Right,
-                    true,
+                        .color(t.text),
                 );
             });
         });
     egui::CentralPanel::default()
         .frame(egui::Frame::new().fill(t.bg).inner_margin(t.frame_gap))
         .show(ui, |ui| {
-            let time = ui.input(|i| i.time);
             let full = ui.available_rect_before_wrap();
-            let split = full.left() + full.width() * 0.6;
+            let split = full.left() + full.width() * 0.55;
             let left_r =
                 Rect::from_min_max(full.min, pos2(split - t.main_gap / 2.0, full.bottom()));
             let right_r = Rect::from_min_max(pos2(split + t.main_gap / 2.0, full.top()), full.max);
 
             ui.scope_builder(UiBuilder::new().max_rect(left_r), |ui| {
                 let mut f = LcarsFrame::new(t, Side::Left, 1.0);
+                f.top_color = TAN;
+                f.bottom_color = SLATE;
                 f.min_height = left_r.height();
                 let (_, fr) = f.show(ui, t, |ui| {
-                    ui.label(egui::RichText::new("SENSOR TELEMETRY").size(t.header_size));
+                    ui.label(egui::RichText::new("MODE BUTTONS").size(t.header_size));
+                    ui.horizontal(|ui| {
+                        for (l, m) in st.buttons.iter_mut() {
+                            mode_button(ui, t, l, m, vec2(96.0, 56.0));
+                        }
+                    });
+                    ui.add_space(t.main_gap);
+                    ui.label(
+                        egui::RichText::new("CLICK SELECT  ·  DOUBLE ALT1  ·  TRIPLE ALT2")
+                            .size(t.data_size),
+                    );
+                    ui.label(
+                        egui::RichText::new("SHIFT/CTRL+CLICK OR RIGHT-CLICK MENU")
+                            .size(t.data_size),
+                    );
+                    ui.add_space(t.main_gap);
+                    ui.label(egui::RichText::new("TELEMETRY").size(t.header_size));
                     egui::Grid::new("nums")
                         .spacing(vec2(t.main_gap, t.frame_gap))
                         .show(ui, |ui| {
-                            for row in 0..6u64 {
+                            for row in 0..4u64 {
                                 for col in 0..4u64 {
-                                    let v = ((time * 1000.0) as u64 / (230 + 80 * col)
-                                        + row * 7919
-                                        + col * 104729)
-                                        % 100000;
-                                    readout(ui, t, &format!("{v:05}"), row == 2 && col == 1);
+                                    let v = (row * 7919 + col * 104729) % 100000;
+                                    readout(ui, t, &format!("{v:05}"), row == 1 && col == 2);
                                 }
                                 ui.end_row();
                             }
                         });
                 });
-                // frame segments as buttons, cut into the left vertical bar
                 let side = Rect::from_min_size(
                     pos2(fr.left(), fr.center().y - 70.0),
                     vec2(t.bar_thick, 140.0),
@@ -570,7 +913,7 @@ pub fn demo(ui: &mut Ui, t: &LcarsTheme) {
                         ui,
                         t,
                         "Sensors",
-                        t.accent,
+                        TEAL,
                         vec2(t.bar_thick, 44.0),
                         Cap::None,
                         true,
@@ -579,7 +922,7 @@ pub fn demo(ui: &mut Ui, t: &LcarsTheme) {
                         ui,
                         t,
                         "Shields",
-                        t.secondary,
+                        OLIVE,
                         vec2(t.bar_thick, 44.0),
                         Cap::None,
                         true,
@@ -588,7 +931,7 @@ pub fn demo(ui: &mut Ui, t: &LcarsTheme) {
                         ui,
                         t,
                         "Off",
-                        t.secondary,
+                        OLIVE,
                         vec2(t.bar_thick, 44.0),
                         Cap::None,
                         false,
@@ -598,17 +941,13 @@ pub fn demo(ui: &mut Ui, t: &LcarsTheme) {
 
             ui.scope_builder(UiBuilder::new().max_rect(right_r), |ui| {
                 let mut f = LcarsFrame::new(t, Side::Right, 0.6);
+                f.top_color = PLUM;
+                f.bottom_color = BRICK;
                 f.min_height = right_r.height();
-                f.top_color = t.accent;
-                f.bottom_color = t.primary;
                 f.show(ui, t, |ui| {
-                    ui.label(egui::RichText::new("ENGINEERING").size(t.header_size));
-                    lcars_button(ui, t, "Warp", t.primary, vec2(150.0, 44.0), Cap::Both, true);
-                    lcars_button(ui, t, "Alert", t.alert, vec2(150.0, 44.0), Cap::Both, true);
-                    readout(ui, t, "21.0473", false);
+                    ui.label(egui::RichText::new("CHANNELS").size(t.header_size));
+                    mode_list(ui, t, "channels", &mut st.rows, 28.0);
                 });
             });
-            ui.ctx()
-                .request_repaint_after(std::time::Duration::from_millis(250));
         });
 }

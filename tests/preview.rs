@@ -5,6 +5,7 @@ use egui_kittest::Harness;
 #[test]
 fn render_preview() {
     let t = rustcars::LcarsTheme::default();
+    let mut st = rustcars::DemoState::default();
     let mut setup = true;
     let mut harness = Harness::builder()
         .with_size(egui::vec2(1280.0, 800.0))
@@ -15,15 +16,15 @@ fn render_preview() {
                 rustcars::apply_theme(ui.ctx(), &t);
                 setup = false;
             }
-            rustcars::demo(ui, &t);
+            rustcars::demo(ui, &t, &mut st);
         });
     harness.run_steps(4);
     let mut img = harness.render().expect("wgpu render failed");
-    // build_ui leaves a transparent margin around the root Ui; flatten onto LCARS black.
+    // build_ui leaves a transparent margin around the root Ui; flatten onto palette::BG (#1B1B1B).
     for px in img.pixels_mut() {
         let a = px[3] as u32;
         for k in 0..3 {
-            px[k] = (px[k] as u32 * a / 255) as u8;
+            px[k] = ((px[k] as u32 * a + 0x1B * (255 - a)) / 255) as u8; // onto palette::BG
         }
         px[3] = 255;
     }

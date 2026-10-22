@@ -1,6 +1,7 @@
 //! `cargo run` opens the LCARS demo window.
 fn main() -> eframe::Result {
     let t = rustcars::LcarsTheme::default();
+    let mut st = rustcars::DemoState::default();
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([1280.0, 800.0])
@@ -14,6 +15,6 @@ fn main() -> eframe::Result {
             rustcars::apply_theme(ui.ctx(), &t);
             setup = false;
         }
-        rustcars::demo(ui, &t);
+        rustcars::demo(ui, &t, &mut st);
     })
 }
