@@ -133,6 +133,10 @@ Reference screenshots: IMG1 buttons (LOAD/SAVE/SCAN/DWELL), IMG2 tab palette (Tu
 - `apply_theme` forces `ThemePreference::Dark`, because browsers otherwise apply their light/dark preference.
 - Before committing, run `scripts/check.sh`. It covers fmt, clippy for the default/wasm/server builds, and the tests.
 
+### P6. Developer manual
+- The human-facing guide is `docs/MANUAL.md` (chapters in `docs/manual/`). The PDF edition is `docs/rustcars-manual.pdf`, rebuilt with `docs/build-manual.sh`.
+- Keep the manual's examples consistent with the code: `examples/minimal.rs` must match chapter 2.
+
 ## 1. Philosophy
 - [MANIFESTO] "The Perfect LCARS System is Invisible." LCARS for real applications puts function first. Decoration must never get in the way of operation.
 - [MANIFESTO] The **swept elbow IS LCARS**. It is the single defining shape, with space efficiency as its flaw.

@@ -14,6 +14,12 @@ The repo also contains [`AGENTS.md`](AGENTS.md), a set of design and implementat
 
 ![preview](docs/preview.png)
 
+## Documentation
+
+- **[Developer manual](docs/MANUAL.md):** 11 chapters covering principles, layout, controls, color, typography, feedback, accessibility, web, testing and a glossary. There is also a [PDF book edition](docs/rustcars-manual.pdf); rebuild it with `docs/build-manual.sh` (needs pandoc and typst).
+- **[AGENTS.md](AGENTS.md):** rules for coding agents.
+- **Minimal example:** `cargo run --example minimal`.
+
 ## Run
 
 ```sh
