@@ -1,0 +1,15 @@
+[package]
+name = "rustcars"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+description = "LCARS-style widgets and demo for egui"
+repository = "https://github.com/webaugur/rustcars"
+
+[dependencies]
+egui = "0.37"
+eframe = "0.37"
+
+[dev-dependencies]
+egui_kittest = { version = "0.37", features = ["wgpu", "snapshot"] }
+image = { version = "0.25", default-features = false, features = ["png"] }
