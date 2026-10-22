@@ -14,7 +14,8 @@ A guide for developers adding the rustcars LCARS user interface to their own egu
 8. [Keyboard, Accessibility and Screen Readers](manual/08-accessibility.md)
 9. [Desktop and the Optional Web Interface](manual/09-web.md)
 10. [Testing](manual/10-testing.md)
-11. [Checklist and Glossary](manual/11-checklist-glossary.md)
+11. [Example Applications](manual/11-examples.md)
+12. [Checklist and Glossary](manual/12-checklist-glossary.md)
 
 A PDF edition in book form is available at [rustcars-manual.pdf](rustcars-manual.pdf); rebuild it with `docs/build-manual.sh`.
 

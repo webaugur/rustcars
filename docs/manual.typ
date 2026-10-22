@@ -58,9 +58,14 @@
   margin: (inside: 0.875in, outside: 0.625in, top: 0.8in, bottom: 0.75in),
   header: context {
     let p = here().page()
+    // no running head on chapter-opening pages
+    if query(heading.where(level: 1)).any(h => h.location().page() == p) { return }
     set text(font: head-font, size: 8.5pt, fill: luma(90))
+    // chapter title of the last chapter that started on or before this page
+    let chs = query(heading.where(level: 1)).filter(h => h.location().page() <= p)
+    let title = if chs.len() > 0 { chs.last().body } else { [] }
     if calc.even(p) [RUSTCARS DEVELOPER MANUAL #h(1fr)]
-    else [#h(1fr) #upper(chapter-title.get())]
+    else [#h(1fr) #upper(title)]
     v(-6pt); line(length: 100%, stroke: 0.4pt + accent)
   },
   footer: context {

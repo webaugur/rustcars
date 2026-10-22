@@ -53,7 +53,7 @@ Every action gets an immediate, visible response:
 People make mistakes, so make them cheap:
 
 - Repeating a mode gesture turns the control **off** again (`Mode::after_gesture`).
-- Destructive actions ask for confirmation, and where possible offer **undo** instead (see the diary example, Chapter 12).
+- Destructive actions ask for confirmation, and where possible offer **undo** instead (see the diary example, Chapter 11).
 - Never put a destructive control directly next to a frequently used one.
 
 ## 1.7 Perceived stability: controls never move

@@ -133,6 +133,10 @@ Reference screenshots: IMG1 buttons (LOAD/SAVE/SCAN/DWELL), IMG2 tab palette (Tu
 - `apply_theme` forces `ThemePreference::Dark`, because browsers otherwise apply their light/dark preference.
 - Before committing, run `scripts/check.sh`. It covers fmt, clippy for the default/wasm/server builds, and the tests.
 
+### P5b. Single-meaning buttons and examples
+- For functions with exactly one meaning (digits, operators, Confirm/Cancel), use `action_button`. It has the IMG1 look with no click modes and fires on every click, so fast repeated presses are never merged.
+- The reference apps are `examples/calculator` and `examples/diary`. They are desktop only, and their extra dependencies (rusqlite, directories, chrono) are dev-dependencies.
+
 ### P6. Developer manual
 - The human-facing guide is `docs/MANUAL.md` (chapters in `docs/manual/`). The PDF edition is `docs/rustcars-manual.pdf`, rebuilt with `docs/build-manual.sh`.
 - Keep the manual's examples consistent with the code: `examples/minimal.rs` must match chapter 2.
@@ -504,8 +508,13 @@ pub fn apply_theme(ctx: &Context, t: &LcarsTheme) {
             &mut v.widgets.open,
         ] {
             w.bg_stroke = Stroke::NONE;
-            w.corner_radius = CornerRadius::same(255);
+            w.corner_radius = CornerRadius::same(4);
         }
+        // Text fields (egui's own widgets): visible surface + 1px border >= 3:1 (WCAG 1.4.11).
+        v.extreme_bg_color = palette::SURFACE;
+        v.widgets.inactive.bg_stroke = Stroke::new(1.0, Mode::Inactive.colors().border);
+        v.widgets.hovered.bg_stroke = Stroke::new(1.0, t.text);
+        v.selection.stroke = Stroke::new(1.0, t.text);
     });
 }
 
@@ -927,7 +936,9 @@ fn paint_mode_surface(
     row: bool,
 ) {
     let c = mode.colors();
-    let p = ui.painter();
+    let p = ui
+        .painter()
+        .with_clip_rect(rect.expand(1.0).intersect(ui.clip_rect()));
     let (flat, center) = (row, !row);
     let r = CornerRadius::same(4);
     let fill = if flat && mode == Mode::Inactive {
@@ -1004,6 +1015,30 @@ fn a11y(resp: &Response, ui: &Ui, label: &str, mode: Mode) {
     let text = format!("{label}, mode {}", mode.short_name());
     let enabled = ui.is_enabled();
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, enabled, &text));
+}
+
+/// IMG1-style single-action button (no click modes): fires immediately on every click,
+/// so fast repeated presses (e.g. typing digits) are never merged into a double/triple click.
+/// Use it for functions with exactly one meaning.
+pub fn action_button(ui: &mut Ui, t: &LcarsTheme, label: &str, size: Vec2) -> Response {
+    let (rect, resp) = ui.allocate_exact_size(size, Sense::click());
+    paint_mode_surface(ui, t, rect, Mode::Inactive, label, resp.hovered(), false);
+    if resp.is_pointer_button_down_on() {
+        ui.painter()
+            .rect_filled(rect, CornerRadius::same(4), Color32::from_white_alpha(18));
+    }
+    if resp.has_focus() {
+        ui.painter().rect_stroke(
+            rect.expand(2.0),
+            CornerRadius::same(5),
+            Stroke::new(1.0, t.text),
+            egui::StrokeKind::Outside,
+        );
+    }
+    let enabled = ui.is_enabled();
+    let l = label.to_owned();
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, enabled, &l));
+    resp
 }
 
 /// [PROJECT] mode button (IMG1 style). Returns the response; `mode` is updated in place.

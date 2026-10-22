@@ -1,6 +1,6 @@
-# 11. Checklist and Glossary
+# 12. Checklist and Glossary
 
-## 11.1 Do
+## 12.1 Do
 
 - Take every color, size and gap from `LcarsTheme` or `palette`.
 - Change thickness at every elbow, and end each bar with a cap.
@@ -12,7 +12,7 @@
 - Keep the web interface off by default, bound to localhost, with devices only behind the bridge.
 - Ship `OFL.txt` with the font.
 
-## 11.2 Don't
+## 12.2 Don't
 
 - Add gradients, bevels or shadows to frames.
 - Use the same thickness on both sides of a turn, or stretch an elbow.
@@ -22,7 +22,7 @@
 - Rely on color alone, or on hover alone.
 - Use `std::time::Instant` in shared UI code.
 
-## 11.3 Glossary
+## 12.3 Glossary
 
 - **Bar:** a straight colored band of the frame. Vertical bars are thick, horizontal bars thin.
 - **Cap:** the rounded end of a bar. LCARS's "full stop".
@@ -37,7 +37,7 @@
 - **Segment:** a piece of a bar cut out with a gap. It often works as a button.
 - **Readout:** a data value display; it is highlighted while being processed.
 
-## 11.4 Credits
+## 12.4 Credits
 
 - **Design guidance:** Bracer Jack, *LCARS GuideLine* and *The LCARS Manifesto*, republished by lcars-terminal.de.
 - **Structure:** inspired by Apple's Macintosh Human Interface Guidelines (1987/1992). No text was copied.

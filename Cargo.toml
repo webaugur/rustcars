@@ -32,6 +32,20 @@ web-sys = { version = "0.3", features = ["Window", "Document", "HtmlCanvasElemen
 [dev-dependencies]
 egui_kittest = { version = "0.37", features = ["wgpu", "snapshot"] }
 image = { version = "0.25", default-features = false, features = ["png"] }
+# diary example only (dev-dependencies never reach library users)
+rusqlite = { version = "0.40", features = ["bundled"] }
+directories = "6"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+
+[[example]]
+name = "calculator"
+path = "examples/calculator/main.rs"
+test = true
+
+[[example]]
+name = "diary"
+path = "examples/diary/main.rs"
+test = true
 
 [[bin]]
 name = "rustcars"
