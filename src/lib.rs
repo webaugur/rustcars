@@ -8,6 +8,9 @@ use egui::{
 };
 use std::sync::Arc;
 
+#[cfg(all(feature = "web", target_arch = "wasm32"))]
+pub mod web;
+
 // ---------------------------------------------------------------- palette
 /// [PROJECT] palette. Base hues sampled from the user's reference screenshots (IMG2 tabs,
 /// IMG1 buttons, IMG3 lists). Frame hues are brightened variants of the sampled tab colors so
@@ -235,6 +238,8 @@ pub fn install_lcars_font(ctx: &Context) {
 }
 
 pub fn apply_theme(ctx: &Context, t: &LcarsTheme) {
+    // Force dark: the web build otherwise follows the browser's light/dark preference.
+    ctx.set_theme(egui::ThemePreference::Dark);
     ctx.global_style_mut(|s| {
         use FontFamily::{Monospace, Proportional};
         s.text_styles = [
@@ -979,4 +984,28 @@ pub fn demo(ui: &mut Ui, t: &LcarsTheme, st: &mut DemoState) {
                 });
             });
         });
+}
+
+/// The demo as an `eframe::App`, shared by the desktop binary and the web (wasm) build.
+pub struct DemoApp {
+    pub theme: LcarsTheme,
+    pub state: DemoState,
+}
+
+impl DemoApp {
+    pub fn new(ctx: &Context) -> Self {
+        let theme = LcarsTheme::default();
+        install_lcars_font(ctx);
+        apply_theme(ctx, &theme);
+        Self {
+            theme,
+            state: DemoState::default(),
+        }
+    }
+}
+
+impl eframe::App for DemoApp {
+    fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
+        demo(ui, &self.theme, &mut self.state);
+    }
 }

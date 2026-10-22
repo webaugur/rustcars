@@ -35,6 +35,31 @@ The test needs a Vulkan or GL device. On a machine without a GPU, install Mesa's
 cargo clippy --all-targets -- -D warnings
 ```
 
+## Web interface (optional, off by default)
+
+The default `cargo build` produces only the desktop app and pulls in no web dependencies. Two separate opt-in features add web support.
+
+| Feature | What it adds | Build / run |
+|---|---|---|
+| `web` | The same UI compiled to WebAssembly (eframe `WebRunner`, `src/web.rs`, `index.html`, `Trunk.toml`) | `rustup target add wasm32-unknown-unknown`, install [trunk](https://trunkrs.dev), then `trunk build --release` (outputs `dist/`) or `trunk serve` (http://127.0.0.1:8080). `index.html` turns on `--features web` itself. |
+| `web-server` | `rustcars-web` binary: serves `dist/` plus a WebSocket device-bridge stub at `/ws` | `cargo run --features web-server --bin rustcars-web -- --enable [--bind 127.0.0.1:8080] [--dist dist]` |
+
+How the pieces fit:
+- **The browser can't reach your devices.** The wasm UI runs in the visitor's browser, so it can't touch the server's USB devices or GQRX's TCP port. Device access belongs only in the server process, behind the `DeviceBackend` trait in `src/bin/rustcars-web.rs`. The only backend today is `EchoBackend` (`ping` → `pong`, everything else echoed). It does no device access.
+- **Off at runtime too.** `rustcars-web` refuses to start without `--enable`. It binds `127.0.0.1:8080` by default; pass `--bind 0.0.0.0:8080` to expose it on your LAN.
+
+**Security:** there is **no authentication**, and the server prints a warning saying so at startup. Keep it on localhost, or put it behind an authenticating reverse proxy, TLS, or a VPN before exposing it.
+
+**GitHub Pages:** the static `dist/` can be hosted on Pages, but Pages for a private repository requires a paid GitHub plan. A static site has no server bridge, so it is UI-only.
+
+## Checks
+
+`scripts/check.sh` runs:
+- `cargo fmt --check`
+- clippy for the desktop, wasm (`--features web --target wasm32-unknown-unknown`) and `--features web-server` builds
+- all tests
+- a check that the default build pulls no web dependencies
+
 ## Usage
 
 ```rust

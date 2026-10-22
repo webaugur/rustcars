@@ -125,6 +125,14 @@ Reference screenshots: IMG1 buttons (LOAD/SAVE/SCAN/DWELL), IMG2 tab palette (Tu
 - Inactive rows are flat `#202020` with muted text and no border. They show a gray border only on hover.
 - Activated rows get the state's tinted fill plus a **thin 1 px border** (like the purple selection in IMG3) and right-aligned mode pips.
 
+### P5. Web interface (optional)
+- The web interface is **optional and OFF by default**. Never add `web` or `web-server` to `default` features, and never start the server without an explicit `--enable`.
+- The `rustcars-web` server binds **127.0.0.1 by default**. Exposing it on a LAN requires an explicit `--bind`, and it must print the no-authentication warning at startup.
+- **Device access (GQRX TCP, USB, …) happens only server-side** through a `DeviceBackend` implementation behind the WebSocket bridge. The wasm UI must never assume it can reach devices directly.
+- Shared UI code must compile for both targets. Use egui's input time (`ui.input(|i| i.time)`) or the `web-time` crate, never `std::time::Instant`, which panics on wasm32.
+- `apply_theme` forces `ThemePreference::Dark`, because browsers otherwise apply their light/dark preference.
+- Before committing, run `scripts/check.sh`. It covers fmt, clippy for the default/wasm/server builds, and the tests.
+
 ## 1. Philosophy
 - [MANIFESTO] "The Perfect LCARS System is Invisible." LCARS for real applications puts function first. Decoration must never get in the way of operation.
 - [MANIFESTO] The **swept elbow IS LCARS**. It is the single defining shape, with space efficiency as its flaw.
@@ -229,6 +237,9 @@ use egui::{
     Response, Sense, Shadow, Shape, Stroke, TextStyle, Ui, UiBuilder, Vec2, pos2, vec2,
 };
 use std::sync::Arc;
+
+#[cfg(all(feature = "web", target_arch = "wasm32"))]
+pub mod web;
 
 // ---------------------------------------------------------------- palette
 /// [PROJECT] palette. Base hues sampled from the user's reference screenshots (IMG2 tabs,
@@ -457,6 +468,8 @@ pub fn install_lcars_font(ctx: &Context) {
 }
 
 pub fn apply_theme(ctx: &Context, t: &LcarsTheme) {
+    // Force dark: the web build otherwise follows the browser's light/dark preference.
+    ctx.set_theme(egui::ThemePreference::Dark);
     ctx.global_style_mut(|s| {
         use FontFamily::{Monospace, Proportional};
         s.text_styles = [
@@ -1201,6 +1214,30 @@ pub fn demo(ui: &mut Ui, t: &LcarsTheme, st: &mut DemoState) {
                 });
             });
         });
+}
+
+/// The demo as an `eframe::App`, shared by the desktop binary and the web (wasm) build.
+pub struct DemoApp {
+    pub theme: LcarsTheme,
+    pub state: DemoState,
+}
+
+impl DemoApp {
+    pub fn new(ctx: &Context) -> Self {
+        let theme = LcarsTheme::default();
+        install_lcars_font(ctx);
+        apply_theme(ctx, &theme);
+        Self {
+            theme,
+            state: DemoState::default(),
+        }
+    }
+}
+
+impl eframe::App for DemoApp {
+    fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
+        demo(ui, &self.theme, &mut self.state);
+    }
 }
 
 // ---- tests/modes.rs ----

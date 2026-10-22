@@ -1,0 +1,9 @@
+# Web build (optional). `trunk build --release` / `trunk serve`.
+# The `web` cargo feature is enabled from index.html (data-cargo-features="web").
+[build]
+target = "index.html"
+dist = "dist"
+
+[serve]
+addresses = ["127.0.0.1"]
+port = 8080

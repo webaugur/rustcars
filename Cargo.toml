@@ -1,15 +1,43 @@
 [package]
 name = "rustcars"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 license = "MIT"
 description = "LCARS-style widgets and demo for egui"
 repository = "https://github.com/webaugur/rustcars"
+default-run = "rustcars"
+
+[features]
+# Both optional and OFF by default. A plain `cargo build` is the desktop app only.
+default = []
+# Browser (wasm32) build of the UI via eframe's WebRunner. Build with `trunk build --release --features web`.
+web = ["dep:wasm-bindgen", "dep:wasm-bindgen-futures", "dep:web-sys"]
+# Native server that serves dist/ and a WebSocket device-bridge stub (binary `rustcars-web`).
+web-server = ["dep:axum", "dep:tokio", "dep:tower-http"]
 
 [dependencies]
 egui = "0.37"
 eframe = "0.37"
 
+# web-server (native only)
+axum = { version = "0.8", features = ["ws"], optional = true }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "signal"], optional = true }
+tower-http = { version = "0.6", features = ["fs"], optional = true }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = { version = "0.2", optional = true }
+wasm-bindgen-futures = { version = "0.4", optional = true }
+web-sys = { version = "0.3", features = ["Window", "Document", "HtmlCanvasElement", "Element", "console"], optional = true }
+
 [dev-dependencies]
 egui_kittest = { version = "0.37", features = ["wgpu", "snapshot"] }
 image = { version = "0.25", default-features = false, features = ["png"] }
+
+[[bin]]
+name = "rustcars"
+path = "src/main.rs"
+
+[[bin]]
+name = "rustcars-web"
+path = "src/bin/rustcars-web.rs"
+required-features = ["web-server"]
