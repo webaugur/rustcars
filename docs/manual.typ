@@ -53,28 +53,43 @@
 
 // ---------------- body
 #let chapter-title = state("chapter", "")
+#let chap-count = counter("chap")
+// A page is blank when it only exists to push the next chapter onto a right-hand (odd) page:
+// it is even, carries no chapter-end marker, and the next page opens a chapter.
+#let blank-page(lp) = {
+  let no-end = query(<chap-end>).all(m => counter(page).at(m.location()).first() != lp)
+  let next-opens = query(heading.where(level: 1)).any(h => counter(page).at(h.location()).first() == lp + 1)
+  calc.even(lp) and no-end and next-opens
+}
 #set page(
   width: 6in, height: 9in,
   margin: (inside: 0.875in, outside: 0.625in, top: 0.8in, bottom: 0.75in),
   header: context {
     let p = here().page()
-    // no running head on chapter-opening pages
+    let lp = counter(page).get().first()
+    // no running head on blank pages or chapter-opening pages
+    if blank-page(lp) { return }
     if query(heading.where(level: 1)).any(h => h.location().page() == p) { return }
     set text(font: head-font, size: 8.5pt, fill: luma(90))
     // chapter title of the last chapter that started on or before this page
     let chs = query(heading.where(level: 1)).filter(h => h.location().page() <= p)
     let title = if chs.len() > 0 { chs.last().body } else { [] }
-    if calc.even(p) [RUSTCARS DEVELOPER MANUAL #h(1fr)]
+    if calc.even(lp) [RUSTCARS DEVELOPER MANUAL #h(1fr)]
     else [#h(1fr) #upper(title)]
     v(-6pt); line(length: 100%, stroke: 0.4pt + accent)
   },
   footer: context {
+    let lp = counter(page).get().first()
+    if blank-page(lp) { return }
     let p = counter(page).display()
     set text(font: head-font, size: 9pt)
-    if calc.even(here().page()) [#p #h(1fr)] else [#h(1fr) #p]
+    if calc.even(lp) [#p #h(1fr)] else [#h(1fr) #p]
   },
 )
 #show heading.where(level: 1): it => {
+  // marks the last page of the previous chapter (not placed before the first chapter)
+  context if chap-count.get().first() > 0 { [#metadata("end") <chap-end>] }
+  chap-count.step()
   pagebreak(to: "odd", weak: true)
   chapter-title.update(it.body)
   v(0.9in)

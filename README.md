@@ -16,18 +16,32 @@ The repo also contains [`AGENTS.md`](AGENTS.md), a set of design and implementat
 
 ## Documentation
 
-- **[Developer manual](docs/MANUAL.md):** 12 chapters covering principles, layout, controls, color, typography, feedback, accessibility, web, testing, a glossary and example applications. There is also a [PDF book edition](docs/rustcars-manual.pdf); rebuild it with `docs/build-manual.sh` (needs pandoc and typst).
+- **[Developer manual](docs/MANUAL.md):** 12 chapters covering principles, layout, controls, color, typography, feedback, accessibility, web, testing, example applications and a glossary. There is also a [PDF book edition](docs/rustcars-manual.pdf); rebuild it with `docs/build-manual.sh` (needs pandoc and typst).
 - **[AGENTS.md](AGENTS.md):** rules for coding agents.
 - **Examples:**
   - `cargo run --example minimal`: the smallest app.
   - `cargo run --example calculator`: scientific calculator with graphing. Function keys: click = function, double = inverse, triple = hyperbolic.
   - `cargo run --example diary [-- --db PATH]`: journal stored in SQLite, with search, edit and delete with undo.
 
-  The calculator and diary are desktop only.
+  - `cargo run --example ham_rf`: ten ham radio calculators (wavelength, antenna lengths, coax loss, SWR, dB and power, Ohm's law, LC resonance, L-network matching, path loss, US band plan). The maths is in a unit-tested module. Click modes pick units, directions and band-edge targets.
+  - `cargo run --example timers`: UTC and local clocks, world clocks, stopwatch with laps, countdown with a 10 minute ID timer, and a copy-time button (click = UTC log stamp, double = local, triple = ISO 8601).
+  - `cargo run --example hexview [-- FILE]`: hex viewer with inspect, bookmark and copy as click modes, go to, and find.
+
+  The examples are desktop only.
 
   | Calculator | Diary |
   |---|---|
   | ![calculator](docs/calculator.png) | ![diary](docs/diary.png) |
+
+  | Ham RF | Timers |
+  |---|---|
+  | ![ham_rf](docs/ham_rf.png) | ![timers](docs/timers.png) |
+
+  | Ham RF: coax | Hex viewer |
+  |---|---|
+  | ![ham_rf_coax](docs/ham_rf_coax.png) | ![hexview](docs/hexview.png) |
+
+  More ham RF screens: [SWR](docs/ham_rf_swr.png), [band plan](docs/ham_rf_bands.png).
 
 ## Run
 
