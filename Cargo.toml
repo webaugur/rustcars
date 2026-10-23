@@ -52,6 +52,11 @@ name = "ham_rf"
 path = "examples/ham_rf/main.rs"
 test = true
 
+[[example]]
+name = "timers"
+path = "examples/timers/main.rs"
+test = true
+
 [[bin]]
 name = "rustcars"
 path = "src/main.rs"
