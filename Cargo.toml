@@ -47,6 +47,11 @@ name = "diary"
 path = "examples/diary/main.rs"
 test = true
 
+[[example]]
+name = "ham_rf"
+path = "examples/ham_rf/main.rs"
+test = true
+
 [[bin]]
 name = "rustcars"
 path = "src/main.rs"
