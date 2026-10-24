@@ -62,6 +62,11 @@ name = "hexview"
 path = "examples/hexview/main.rs"
 test = true
 
+[[example]]
+name = "smith"
+path = "examples/smith/main.rs"
+test = true
+
 [[bin]]
 name = "rustcars"
 path = "src/main.rs"
