@@ -27,6 +27,8 @@ The repo also contains [`AGENTS.md`](AGENTS.md), a set of design and implementat
   - `cargo run --example timers`: UTC and local clocks, world clocks, stopwatch with laps, countdown with a 10 minute ID timer, and a copy-time button (click = UTC log stamp, double = local, triple = ISO 8601).
   - `cargo run --example hexview [-- FILE]`: hex viewer with inspect, bookmark and copy as click modes, go to, and find.
 
+  - `cargo run --example smith`: Smith chart with load, SWR circle, line rotation toward the generator, admittance overlay, hover read-out, click-mode markers and a single-stub match drawn on the chart.
+
   The examples are desktop only.
 
   | Calculator | Diary |
@@ -40,6 +42,10 @@ The repo also contains [`AGENTS.md`](AGENTS.md), a set of design and implementat
   | Ham RF: coax | Hex viewer |
   |---|---|
   | ![ham_rf_coax](docs/ham_rf_coax.png) | ![hexview](docs/hexview.png) |
+
+  | Smith chart | Smith chart: admittance grid |
+  |---|---|
+  | ![smith](docs/smith.png) | ![smith_admittance](docs/smith_admittance.png) |
 
   More ham RF screens: [SWR](docs/ham_rf_swr.png), [band plan](docs/ham_rf_bands.png).
 

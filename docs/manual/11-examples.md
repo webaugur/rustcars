@@ -1,6 +1,6 @@
 # 11. Example Applications
 
-Five complete desktop applications show the rules in practice. All are built only from rustcars widgets and the theme. They are desktop only; the extra crates they use (`rusqlite`, `directories`, `chrono`) are dev-dependencies, so library users never pull them in.
+Six complete desktop applications show the rules in practice. All are built only from rustcars widgets and the theme. They are desktop only; the extra crates they use (`rusqlite`, `directories`, `chrono`) are dev-dependencies, so library users never pull them in.
 
 ## 11.1 Scientific calculator
 
@@ -57,7 +57,7 @@ Five complete desktop applications show the rules in practice. All are built onl
 
 ![Ham RF: antenna lengths](../ham_rf.png)
 
-Ten tools sit on the tab strip. One **frequency** field in the left frame feeds every tool that needs it, so you type `14.2` once. Under it are two unit pickers (see 11.6).
+Ten tools sit on the tab strip. One **frequency** field in the left frame feeds every tool that needs it, so you type `14.2` once. Under it are two unit pickers (see 11.7).
 
 | Tab | What it does |
 |---|---|
@@ -101,14 +101,28 @@ Click modes are used as *variants of one function* here: unit pickers, the direc
 - **GO TO** takes `496` or `0x1F0`. **FIND** takes hex bytes (`DE AD BE EF`) or quoted text (`"RIFF"`), searches forward from the selection and wraps once.
 - Errors are shown in words (`ERROR: ...`) in the status line.
 
-## 11.6 Patterns worth copying
+## 11.6 Smith chart
+
+`cargo run --example smith`. The source is in `examples/smith/`: `main.rs` holds the UI and `math.rs` the complex maths, grid geometry, line rotation and stub matching. The SWR, return-loss and mismatch figures reuse `ham_rf`'s `calc.rs` through a `#[path]` module.
+
+![Smith chart](../smith.png)
+
+- **Chart:** painted with egui's painter and scaled to the frame. It shows constant-resistance circles and constant-reactance arcs clipped to the unit circle, with labels on the real axis and the rim. The GRID picker adds the admittance grid (the impedance grid mirrored through the centre).
+- **Load:** enter R, X, Z0 (50 ohm by default) and the frequency. The load is plotted with its constant-SWR circle. The panel shows Gamma (magnitude and angle), SWR, return loss, mismatch loss and the normalized impedance and admittance.
+- **Line:** a length in wavelengths, degrees or metres (with velocity factor) rotates the load clockwise, toward the generator, along the SWR circle. The arc and the input point `IN` are drawn, and Zin is shown in ohms and normalized. A unit test checks the rotation against the textbook formula Z0 (ZL + jZ0 tan bl) / (Z0 + jZL tan bl).
+- **Pointer and markers:** hovering reads off z and Z under the pointer. Clicking places markers through `handle_mode` on the chart's own response: click = primary (green), double = alt 1 (orange), triple = alt 2 (purple), each with its pips. *Clear markers* removes them.
+- **Match:** the MATCH picker (off, short stub, open stub) computes a single shunt-stub match. It finds the first point toward the generator where the admittance is 1 + jb, then the stub that cancels jb. The path is drawn in the admittance plane: from yL along the SWR circle to the g = 1 circle, then to the centre.
+
+![Smith chart with admittance grid](../smith_admittance.png)
+
+## 11.7 Patterns worth copying
 
 - **Pickers.** A unit or direction with two or three choices is one `mode_button` showing the current choice. Click selects the first choice, double the second, triple the third. A picker always has a value, so a repeated gesture does not switch it off, and a gesture beyond the number of choices is ignored. A hint line under it names the three gestures. See `pick()` in `ham_rf`. For five or more choices use a row of single-choice buttons (`radio_row()`), not modes.
 - **Momentary variants.** Keep a `Mode::Inactive` local, pass it to `mode_button` and act on the result each frame (the calculator's function keys, COPY TIME, ADD TIME).
 - **One marked row per meaning.** After `mode_list`, compare the modes with the ones you had, clear the other rows that held the same mode, and then act on the change.
 - **Pure core, thin shell.** Put the formulas and parsing in a module with no egui in it and test it with known values. The UI only calls it.
 
-## 11.7 Screenshots
+## 11.8 Screenshots
 
 Each example contains a kittest test that renders it headlessly:
 
@@ -118,6 +132,7 @@ cargo test --example diary        # writes docs/diary.png
 cargo test --example ham_rf       # writes docs/ham_rf.png, ham_rf_coax.png, ham_rf_swr.png, ham_rf_bands.png
 cargo test --example timers       # writes docs/timers.png
 cargo test --example hexview      # writes docs/hexview.png
+cargo test --example smith        # writes docs/smith.png, smith_admittance.png
 ```
 
-`cargo test --example ham_rf` also renders every tool into `target/ham_rf_tools/` so layout problems are easy to spot.
+`cargo test --example ham_rf` also renders every tool into `target/ham_rf_tools/` so layout problems are easy to spot. `cargo test --example smith` also renders a smaller window to `target/smith_small.png` to check that the chart scales.

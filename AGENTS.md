@@ -135,8 +135,9 @@ Reference screenshots: IMG1 buttons (LOAD/SAVE/SCAN/DWELL), IMG2 tab palette (Tu
 
 ### P5b. Single-meaning buttons and examples
 - For functions with exactly one meaning (digits, operators, Confirm/Cancel), use `action_button`. It has the IMG1 look with no click modes and fires on every click, so fast repeated presses are never merged.
-- The reference apps are `examples/calculator`, `examples/diary`, `examples/ham_rf`, `examples/timers` and `examples/hexview`. They are desktop only, and their extra dependencies (rusqlite, directories, chrono) are dev-dependencies.
+- The reference apps are `examples/calculator`, `examples/diary`, `examples/ham_rf`, `examples/timers`, `examples/hexview` and `examples/smith`. They are desktop only, and their extra dependencies (rusqlite, directories, chrono) are dev-dependencies.
 - A unit or direction with 2-3 choices is one `mode_button` showing the current choice (click = first, double = second, triple = third). It always has a value (repeating a gesture must not turn it off) and ignores gestures past the last choice. Name the gestures in a hint line. For 4+ choices use a row of single-choice buttons.
+- Custom painted widgets (e.g. the Smith chart) can take click modes too: call `handle_mode` on the widget's own `Response`, and remember the click position, because the gesture commits after the double-click window.
 - Keep formulas and parsers in a module with no egui, covered by known-value unit tests. Label approximate data and informational data (cable loss, band privileges) on screen.
 
 ### P6. Developer manual
