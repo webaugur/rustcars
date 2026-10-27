@@ -25,6 +25,16 @@ How a click sequence is resolved (`handle_mode`):
 - **Single-meaning functions:** use `lcars_button` (no modes) or ignore `Alt1`/`Alt2`. Never invent alternates just to fill the slots, and never give the alternates unrelated meanings.
 - **Destructive actions:** never put one on a double or triple click, because accidental multi-clicks happen.
 
+### Toggle buttons
+
+`toggle_button(ui, &t, label, &mut on, hue, size)` draws an on/off button. A click flips `on` and the response reports `changed()`.
+
+- **Toggles have a thin border, momentary buttons don't.** A toggle (Live, Data, Run) has a 1.5 px outline. A momentary button (Today, Fit, +) is a solid filled rectangle with no outline. The border tells you at a glance which buttons hold a state.
+- **On:** filled in the hue with a light border. **Off:** dark fill with a border in the hue. Borders reach at least 3:1 against the fill, labels at least 4.5:1.
+- **State is written, not just coloured.** The label starts with ● when on and ○ when off, e.g. `● LIVE`, `○ DATA`. The marker is painted as a circle because the LCARS font has no ●/○ characters. `paint_toggle_marker_label` draws it for custom widgets, and `toggle_label(label, on)` gives the text form for screen readers and logs.
+- Screen readers announce it as a checkbox with its on/off state.
+- The stopwatch and countdown **Run** buttons in `examples/timers` are toggles.
+
 ## 4.2 Lists
 
 `mode_list(ui, &t, id_salt, &mut rows, row_h)` takes a `&mut [(String, Mode)]`. Each row behaves exactly like a mode button:

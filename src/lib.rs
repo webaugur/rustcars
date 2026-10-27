@@ -803,6 +803,124 @@ pub fn action_button(ui: &mut Ui, t: &LcarsTheme, label: &str, size: Vec2) -> Re
     resp
 }
 
+// ---------------------------------------------------------------- toggles
+/// [PROJECT] P1b border width of a toggle button.
+pub const TOGGLE_BORDER: f32 = 1.5;
+
+/// [PROJECT] P1b state-marker text: `"● LIVE"` when on, `"○ LIVE"` when off, for
+/// AccessKit names, logs and fonts that have ●/○ (e.g. Hack). `toggle_button` paints the
+/// marker instead, because Antonio has no ●/○ glyphs.
+pub fn toggle_label(label: &str, on: bool) -> String {
+    format!("{} {}", if on { '●' } else { '○' }, label.to_uppercase())
+}
+
+/// [PROJECT] P1b paints the ● (on) / ○ (off) marker as a circle followed by the uppercase
+/// label, centred in `rect`. Painted rather than text because Antonio and egui's default
+/// proportional font have no ●/○ glyphs (same reason as the mode pips in P2).
+pub fn paint_toggle_marker_label(
+    p: &egui::Painter,
+    rect: Rect,
+    label: &str,
+    on: bool,
+    font: FontId,
+    color: Color32,
+) {
+    let galley = p.layout_no_wrap(label.to_uppercase(), font, color);
+    let size = galley.size();
+    let r = (size.y * 0.16).max(2.5);
+    let gap = r * 1.6;
+    let w = 2.0 * r + gap + size.x;
+    let x0 = rect.center().x - w / 2.0;
+    let c = pos2(x0 + r, rect.center().y);
+    if on {
+        p.circle_filled(c, r, color);
+    } else {
+        p.circle_stroke(c, r - 0.5, Stroke::new(1.0, color));
+    }
+    p.galley(
+        pos2(x0 + 2.0 * r + gap, rect.center().y - size.y / 2.0),
+        galley,
+        color,
+    );
+}
+
+/// [PROJECT] P1b toggle colours `(fill, border, label)` for a toggle with hue `base`.
+/// On: solid `base` fill, light/dark ink border. Off: dark fill, border in the hue
+/// (brightened until it reaches 3:1 against the fill). Label is the best ink for the fill.
+pub fn toggle_colors(base: Color32, on: bool) -> (Color32, Color32, Color32) {
+    if on {
+        let light = tint(base, 0.6);
+        let border = if contrast(light, base) >= 3.0 {
+            light
+        } else {
+            ink_on(base)
+        };
+        (base, border, ink_on(base))
+    } else {
+        let fill = palette::BG;
+        let mut border = base;
+        let mut k = 0.0;
+        while contrast(border, fill) < 3.0 && k < 1.0 {
+            k += 0.1;
+            border = tint(base, k);
+        }
+        (fill, border, ink_on(fill))
+    }
+}
+
+/// [PROJECT] P1b toggle button: a button that switches a state on and off.
+/// Momentary buttons (`lcars_button`) stay solid and borderless; toggles get a thin
+/// `TOGGLE_BORDER` outline and a ●/○ marker before the label. A click flips `on` and
+/// marks the response changed. Fires immediately (no click modes).
+pub fn toggle_button(
+    ui: &mut Ui,
+    t: &LcarsTheme,
+    label: &str,
+    on: &mut bool,
+    base: Color32,
+    size: Vec2,
+) -> Response {
+    let (rect, mut resp) = ui.allocate_exact_size(size, Sense::click());
+    if resp.clicked() {
+        *on = !*on;
+        resp.mark_changed();
+    }
+    let (fill, border, ink) = toggle_colors(base, *on);
+    let fill = if resp.hovered() {
+        tint(fill, 0.08)
+    } else {
+        fill
+    };
+    let r = CornerRadius::same(4);
+    let p = ui.painter();
+    p.rect_filled(rect, r, fill);
+    p.rect_stroke(
+        rect,
+        r,
+        Stroke::new(TOGGLE_BORDER, border),
+        egui::StrokeKind::Inside,
+    );
+    paint_toggle_marker_label(
+        p,
+        rect,
+        label,
+        *on,
+        FontId::proportional(t.header_size),
+        ink,
+    );
+    if resp.has_focus() {
+        p.rect_stroke(
+            rect.expand(2.0),
+            CornerRadius::same(5),
+            Stroke::new(1.0, t.text),
+            egui::StrokeKind::Outside,
+        );
+    }
+    let (enabled, l, state) = (ui.is_enabled(), toggle_label(label, *on), *on);
+    resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::CheckBox, enabled, state, &l));
+    resp
+}
+
 /// [PROJECT] mode button (IMG1 style). Returns the response; `mode` is updated in place.
 pub fn mode_button(
     ui: &mut Ui,

@@ -17,7 +17,7 @@ use chrono::{DateTime, FixedOffset, Local, Offset, Utc};
 use clock::{ClockFmt, Countdown, Stamp, Stopwatch, ZONES};
 use rustcars::{
     Cap, LcarsFrame, LcarsTheme, Mode, Side, action_button, apply_theme, install_lcars_font,
-    lcars_button, mode_button, mode_list, palette, readout,
+    lcars_button, mode_button, mode_list, palette, readout, toggle_button,
 };
 
 pub struct Timers {
@@ -249,8 +249,8 @@ impl Timers {
                 .color(if self.sw.running() { t.text_hi } else { t.text }),
         );
         ui.horizontal(|ui| {
-            let label = if self.sw.running() { "Stop" } else { "Start" };
-            if action_button(ui, &t, label, b).clicked() {
+            let mut run = self.sw.running();
+            if toggle_button(ui, &t, "Run", &mut run, rustcars::palette::TEAL, b).changed() {
                 self.sw.toggle(now);
             }
             if action_button(ui, &t, "Lap", b).clicked() && self.sw.lap(now).is_none() {
@@ -305,8 +305,8 @@ impl Timers {
                 .color(color),
         );
         ui.horizontal(|ui| {
-            let label = if self.cd.running() { "Pause" } else { "Start" };
-            if action_button(ui, &t, label, b).clicked() {
+            let mut run = self.cd.running();
+            if toggle_button(ui, &t, "Run", &mut run, rustcars::palette::TEAL, b).changed() {
                 self.cd.toggle(now);
             }
             if action_button(ui, &t, "Clear", b).clicked() {

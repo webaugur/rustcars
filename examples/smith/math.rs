@@ -158,7 +158,7 @@ pub struct StubMatch {
 pub fn stub_match(zl_norm: Cx, kind: Stub) -> Option<StubMatch> {
     let g0 = gamma(zl_norm);
     let m = g0.abs();
-    if m < 1e-6 || m > 1.0 - 1e-9 {
+    if !(1e-6..=1.0 - 1e-9).contains(&m) {
         return None;
     }
     let g_re = |d: f64| z_of(toward_generator(g0, d)).inv().re - 1.0;

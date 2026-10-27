@@ -30,6 +30,14 @@ Reference screenshots: IMG1 buttons (LOAD/SAVE/SCAN/DWELL), IMG2 tab palette (Tu
 - Implementation: `mode_button()`.
 - This replaces the pill-button guidance in §3 for function buttons. The LCARS frame segments and the header tab strip keep the solid muted IMG2 tab style (`lcars_button`), because they are frame chrome and navigation, not multi-mode functions.
 
+### P1b. Toggle buttons
+- A button that **switches a state on and off** (Live, Data, Follow, Mute, Run…) is a toggle. Toggles get a **thin border** (`TOGGLE_BORDER` = 1.5 px, `StrokeKind::Inside`) so they read differently from momentary buttons.
+- **Momentary buttons** (◄ DAY, TODAY, −, +, FIT…) do something once and keep no state. They stay **solid filled with no outline**.
+- **On:** solid fill in the toggle's hue, border a light tint of the hue (or the ink colour if the tint is under 3:1). **Off:** dark page fill (`#1B1B1B`), border in the hue, brightened until it reaches 3:1 against the fill.
+- **State in text:** the label starts with **● when on and ○ when off** (or reads ON/OFF). Never show the state by colour or border alone. The marker is painted (`paint_toggle_marker_label`), because Antonio has no ●/○ glyphs.
+- Implementation: `toggle_button()`, `toggle_colors()`, `paint_toggle_marker_label()`, `toggle_label()`. Checked by `tests/toggle.rs`.
+- A toggle with click modes stays a `mode_button`; this rule covers plain on/off buttons.
+
 ### P2. Click-count modes
 - One control, one function, up to three operating modes:
 
@@ -1456,6 +1464,7 @@ Notes:
 ## 10. Agent checklist (Grok Build)
 **Do**
 - [ ] [PROJECT] Build function buttons and list rows with `mode_button`/`mode_list`: IMG1 style, gray/green/orange/purple modes, never a 4th mode, painted mode pips plus AccessKit mode names, keyboard and context-menu access.
+- [ ] [PROJECT] Draw on/off buttons with `toggle_button` (thin border, ●/○ marker). Momentary buttons stay solid and borderless.
 - [ ] [PROJECT] Take colors from `palette::*` and `Mode::colors()`, and keep `tests/modes.rs` passing whenever you change a color.
 - [ ] Use one `LcarsTheme` as the source of all colors, sizes and gaps. No inline literals.
 - [ ] Vary thickness at every elbow, and draw elbows from primitives proportional to thickness.

@@ -8,7 +8,7 @@ LCARS-style UI widgets and a demo for [egui](https://github.com/emilk/egui) 0.37
 - a theme limited to the three font sizes and two spacing values the guideline calls for
 - the Antonio font, bundled
 
-Function buttons and list rows use click-count modes: click selects (green), double-click picks alternate 1 (orange), triple-click picks alternate 2 (purple). Each active mode also shows painted dots on the right of the control: · for 1, ∶ for 2, ⁖ for 3. Screen readers announce the mode name (e.g. "Scan, mode Alt 1"). The controls are drawn in a muted LCARS palette that meets WCAG 2.2 AA (see `AGENTS.md` §0).
+Function buttons and list rows use click-count modes: click selects (green), double-click picks alternate 1 (orange), triple-click picks alternate 2 (purple). Each active mode also shows painted dots on the right of the control: · for 1, ∶ for 2, ⁖ for 3. Screen readers announce the mode name (e.g. "Scan, mode Alt 1"). On/off buttons (`toggle_button`) have a thin border and a ●/○ marker in the label; momentary buttons are solid with no outline. The controls are drawn in a muted LCARS palette that meets WCAG 2.2 AA (see `AGENTS.md` §0).
 
 The repo also contains [`AGENTS.md`](AGENTS.md), a set of design and implementation rules for coding agents building LCARS UIs with egui.
 
