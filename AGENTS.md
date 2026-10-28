@@ -39,8 +39,8 @@ Reference screenshots: IMG1 buttons (LOAD/SAVE/SCAN/DWELL), IMG2 tab palette (Tu
 - A toggle with click modes stays a `mode_button`; this rule covers plain on/off buttons.
 
 ### P1c. Detachable elbows
-- A group box (`group::GroupBox`, thin titled elbow) may be `.detachable(name)`. Its **end pill is the detach/attach toggle**: it keeps the elbow-end shape (round right end), gets a `PILL_BORDER` (1.5 px) outline, and reads **DETACH** or **ATTACH** (state in text, with a tooltip).
-- Detached, the elbow and everything in it go to their own window (immediate viewport, embedded as an egui window where the backend has no viewports). The parent keeps the elbow with a plain-text stub and an ATTACH pill. Closing the window attaches it.
+- A group box (`group::GroupBox`, thin titled elbow) may be `.detachable(name)`. Its **end pill is the detach/attach toggle**: it keeps the elbow-end shape (round right end), has no text and a `PILL_BORDER` (1.5 px) outline. Attached: elbow-colour fill, `pill_highlight` outline. Detached (pressed): colours swap plus a thin inner line. State words (Detach/Attach) are in the tooltip and accessibility label.
+- Detached, the elbow and everything in it go to their own window (immediate viewport, embedded as an egui window where the backend has no viewports). The parent keeps the elbow with a plain-text stub and a pressed pill. Closing the window attaches it.
 - Contents run exactly once per frame. Nesting works: detached children of a detached parent keep their own windows.
 - Implementation: `src/group.rs` (`GroupBox`, `DetachState`, `detach_pill`, `detached_window`). Checked by `tests/group.rs` with the real font and theme.
 

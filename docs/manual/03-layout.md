@@ -86,7 +86,7 @@ A group box is a thin titled elbow around one group of controls: a 16 px bar wit
 rustcars::group_box(ui, "Radio", rustcars::palette::SLATE, |ui| { /* controls */ });
 ```
 
-Give a group box a name with `.detachable(...)` and its end pill becomes a **DETACH / ATTACH** toggle:
+Give a group box a name with `.detachable(...)` and its end pill becomes a detach/attach toggle:
 
 ```rust
 rustcars::GroupBox::new("RF patch", rustcars::palette::TAN)
@@ -94,10 +94,13 @@ rustcars::GroupBox::new("RF patch", rustcars::palette::TAN)
     .show(ui, |ui| { /* controls */ });
 ```
 
-- **DETACH** moves the elbow and everything in it to its own window. The window shows the same elbow, whose pill reads **ATTACH**.
-- In the original place the elbow stays, with the text "RF PATCH: detached, in its own window. Click ATTACH to bring it back." Its pill also reads **ATTACH**.
-- Clicking either ATTACH pill, or closing the window, puts the group back.
-- The pill keeps the round elbow-end shape, has a thin border so it reads as a button, and says what a click does. Hover it for a sentence that says the same.
+- The pill has no text. It keeps the round elbow-end shape and the same size in both states, so the bar never shifts.
+- **Attached (raised):** the pill is the elbow's colour with a 1.5 px outline in a lighter highlight of that colour.
+- **Detached (pressed in):** the colours swap: highlight fill, outline in the elbow's colour, plus a thin inner line.
+- Hover the pill to read what a click does ("Detach: open RF PATCH in its own window." or "Attach: bring RF PATCH back here…"). Screen readers get the same words.
+- Detaching moves the elbow and everything in it to its own window, which shows the same elbow with a pressed-in pill.
+- In the original place the elbow stays, with the text "RF PATCH: detached, in its own window. Click the end pill to bring it back."
+- Clicking either pill, or closing the window, puts the group back.
 - Group boxes nest. A detached group inside a page that is itself detached stays in its own window; the attached ones travel with the page.
 - The contents run once per frame, in whichever place they are shown.
 

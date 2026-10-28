@@ -55,73 +55,104 @@ fn labels_and_toggle() {
     assert_ne!(DetachState::id("a"), DetachState::id("b"));
 }
 
-#[test]
-fn pill_fits_label_in_real_font_and_keeps_bar_height() {
-    let ctx = ctx();
-    let mut out = None;
-    for _ in 0..2 {
-        out = Some(run(&ctx, input(vec![]), |ui| {
-            GroupBox::new("RF patch", palette::TAN).detachable("rf").show(ui, |ui| ui.label("x"));
-        }));
-    }
-    let t = texts(out.as_ref().unwrap());
-    let (_, r) = t.iter().find(|(s, _)| s == "DETACH").expect("DETACH pill text");
-    let m = Metrics::default();
-    // pill is at the right end of the bar, bar height, text inside it
-    assert!(r.top() >= -0.5 && r.bottom() <= m.bar + 0.5, "text {r:?} outside the 16 px bar");
-    let _ = run(&ctx, input(vec![]), |ui| {
-        let pw = detach_pill_width(ui, &m);
-        let right = ui.available_rect_before_wrap().right();
-        ui.data_mut(|d| d.insert_temp(egui::Id::NULL.with("pw"), (pw, right)));
-    });
-    let (pw, right): (f32, f32) = ctx.data(|d| d.get_temp(egui::Id::NULL.with("pw"))).unwrap();
-    assert!(r.right() <= right + 0.5 && r.left() >= right - pw - 0.5, "text {r:?} not in pill (w {pw})");
-    assert!(r.width() + 4.0 <= pw);
+/// Pill-shaped filled rects (square left, round right): (rect, fill).
+fn pills(out: &egui::FullOutput) -> Vec<(Rect, egui::Color32)> {
+    out.shapes
+        .iter()
+        .filter_map(|c| match &c.shape {
+            Shape::Rect(r) if r.corner_radius.nw == 0 && r.corner_radius.ne > 0 && r.fill != egui::Color32::TRANSPARENT => {
+                Some((r.rect, r.fill))
+            }
+            _ => None,
+        })
+        .collect()
 }
 
-/// Run frames clicking at `p`; count how many times `content` ran per frame.
+/// Outline colour of the stroke painted on `rect`.
+fn outline_at(out: &egui::FullOutput, rect: Rect) -> Option<egui::Color32> {
+    out.shapes.iter().find_map(|c| match &c.shape {
+        Shape::Rect(r) if r.rect == rect && r.fill == egui::Color32::TRANSPARENT && r.stroke.width > 0.0 => Some(r.stroke.color),
+        _ => None,
+    })
+}
+
 #[test]
-fn click_pill_detaches_and_attaches_content_once_per_frame() {
+fn pill_colours_swap_and_stay_distinct_on_every_hue() {
+    let hues = [
+        palette::TAN, palette::SLATE, palette::OLIVE, palette::BRICK, palette::TEAL, palette::PLUM,
+        palette::TEXT, palette::TEXT_MUTED, egui::Color32::from_rgb(0xD9, 0x42, 0x3A),
+        egui::Color32::from_rgb(0xFF, 0x99, 0x00), egui::Color32::WHITE, egui::Color32::from_gray(0x60),
+    ];
+    for c in hues {
+        let (f0, o0) = pill_colors(c, false);
+        let (f1, o1) = pill_colors(c, true);
+        assert_eq!(f0, c);
+        assert_eq!((f1, o1), (o0, f0), "colours swap for {c:?}");
+        assert!(rustcars::contrast(f0, o0) >= PILL_MIN_CONTRAST, "{c:?} fill/outline too close");
+    }
+}
+
+/// Run detachable RF patch frames; content must run once each frame.
+fn rf_frame(ctx: &egui::Context, ev: Vec<Event>, runs: &Cell<u32>) -> egui::FullOutput {
+    runs.set(0);
+    let out = run(ctx, input(ev), |ui| {
+        GroupBox::new("RF patch", palette::TAN).detachable("rf").show(ui, |ui| {
+            runs.set(runs.get() + 1);
+            ui.label("CONTENT");
+        });
+    });
+    assert_eq!(runs.get(), 1, "content must run exactly once");
+    out
+}
+
+#[test]
+fn pill_has_no_text_fixed_size_and_click_toggles() {
     let ctx = ctx();
     let runs = Cell::new(0);
-    let frame = |ctx: &egui::Context, ev: Vec<Event>| {
-        runs.set(0);
-        let out = run(ctx, input(ev), |ui| {
-            GroupBox::new("RF patch", palette::TAN).detachable("rf").show(ui, |ui| {
-                runs.set(runs.get() + 1);
-                ui.label("CONTENT");
-            });
-        });
-        assert_eq!(runs.get(), 1, "content must run exactly once");
-        out
-    };
-    frame(&ctx, vec![]);
-    let mut out = frame(&ctx, vec![]);
-    let pill = texts(&out).into_iter().find(|(s, _)| s == "DETACH").unwrap().1;
+    rf_frame(&ctx, vec![], &runs);
+    let out = rf_frame(&ctx, vec![], &runs);
+    let m = Metrics::default();
+    let p = pills(&out);
+    assert_eq!(p.len(), 1, "{p:?}");
+    let (pill, fill) = p[0];
+    assert_eq!(fill, palette::TAN);
+    assert_eq!(outline_at(&out, pill), Some(pill_highlight(palette::TAN)));
+    assert_eq!(pill.height(), m.bar);
+    assert!(pill.width() >= 40.0, "pill hit area too small: {pill:?}");
+    let t = texts(&out);
+    assert!(t.iter().all(|(_, r)| !r.intersects(pill.shrink(0.5))), "text painted on the pill: {t:?}");
+    assert!(t.iter().any(|(s, _)| s == "RF PATCH"));
+    let bar_text = t.iter().find(|(s, _)| s == "RF PATCH").unwrap().1;
+
     for ev in click_at(pill.center()) {
-        frame(&ctx, ev);
+        rf_frame(&ctx, ev, &runs);
     }
-    // A new window sits out its first (sizing) frame.
-    frame(&ctx, vec![]);
-    out = frame(&ctx, vec![]);
     let id = DetachState::id("rf");
     assert!(DetachState::load(&ctx, id).detached, "click on pill detaches");
+    // A new window sits out its first frame, then fades in.
+    for _ in 0..40 {
+        rf_frame(&ctx, vec![], &runs);
+    }
+    let out = rf_frame(&ctx, vec![], &runs);
+    let hi = pill_highlight(palette::TAN);
+    let p = pills(&out);
+    let pressed: Vec<Rect> = p.iter().filter(|(_, f)| *f == hi).map(|x| x.0).collect();
+    assert_eq!(pressed.len(), 2, "stub and window pills both pressed: {p:?}");
+    assert!(pressed.contains(&pill), "same pill rect when detached: bar layout unchanged");
+    assert_eq!(outline_at(&out, pill), Some(palette::TAN), "outline swaps to the base colour");
     let t = texts(&out);
+    assert!(t.iter().any(|(s, r)| s == "RF PATCH" && *r == bar_text), "title unmoved");
+    assert!(t.iter().all(|(_, r)| pressed.iter().all(|pr| !r.intersects(pr.shrink(0.5)))));
     assert!(t.iter().any(|(s, _)| s.contains("RF PATCH: detached")), "stub text shown");
-    let attach: Vec<Rect> = t.iter().filter(|(s, _)| s == "ATTACH").map(|x| x.1).collect();
-    assert_eq!(attach.len(), 2, "stub pill and window pill both read ATTACH");
-    let content = t.iter().filter(|(s, _)| s == "CONTENT").count();
-    assert_eq!(content, 1, "content drawn once (in the window)");
-    // Click the window's pill (the one that is not where the stub's is).
-    let win = attach.iter().find(|r| (r.center() - pill.center()).length() > 2.0).copied().unwrap();
+    assert_eq!(t.iter().filter(|(s, _)| s == "CONTENT").count(), 1);
+    let win = *pressed.iter().find(|r| **r != pill).unwrap();
     for ev in click_at(win.center()) {
-        frame(&ctx, ev);
+        rf_frame(&ctx, ev, &runs);
     }
     assert!(!DetachState::load(&ctx, id).detached, "window pill attaches");
-    out = frame(&ctx, vec![]);
-    let t = texts(&out);
-    assert!(t.iter().any(|(s, _)| s == "DETACH"));
-    assert!(!t.iter().any(|(s, _)| s.contains("detached")));
+    let out = rf_frame(&ctx, vec![], &runs);
+    assert_eq!(pills(&out), vec![(pill, palette::TAN)]);
+    assert!(!texts(&out).iter().any(|(s, _)| s.contains("detached")));
 }
 
 #[test]

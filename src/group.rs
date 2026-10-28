@@ -185,18 +185,39 @@ pub fn group_box_slot<R>(
     group_box_full(ui, m, title, color, slot_w, None, add, slot_ui).0
 }
 
-/// Pill text for the detach toggle: what a click will do.
+/// What a click on the detach pill does, as a word (tooltip and screen readers).
 pub fn detach_label(detached: bool) -> &'static str {
     if detached { "ATTACH" } else { "DETACH" }
 }
 
-/// Hover text for the detach toggle.
+/// Hover text for the detach toggle. The pill itself carries no text.
 pub fn detach_tooltip(title: &str, detached: bool) -> String {
     if detached {
-        format!("{} is in its own window. Click to put it back here.", title.to_uppercase())
+        format!("Attach: bring {} back here from its own window.", title.to_uppercase())
     } else {
-        format!("Open {} in its own window.", title.to_uppercase())
+        format!("Detach: open {} in its own window.", title.to_uppercase())
     }
+}
+
+/// Lowest fill/outline contrast the pill's two colours must reach.
+pub const PILL_MIN_CONTRAST: f32 = 1.6;
+
+/// The highlight of a pill colour: a lighter tint, or a darker shade when
+/// the colour is already so light that a tint would not show.
+pub fn pill_highlight(c: Color32) -> Color32 {
+    let light = crate::tint(c, 0.5);
+    if crate::contrast(c, light) >= PILL_MIN_CONTRAST {
+        light
+    } else {
+        crate::tint(c, -0.45)
+    }
+}
+
+/// (fill, outline) of the detach pill. Attached (raised): the elbow colour
+/// with a highlight outline. Detached (pressed in): the two swap.
+pub fn pill_colors(color: Color32, detached: bool) -> (Color32, Color32) {
+    let hi = pill_highlight(color);
+    if detached { (hi, color) } else { (color, hi) }
 }
 
 /// Width of the detach pill for a bar of metrics `m`: the wider of the two
@@ -214,29 +235,28 @@ pub fn detach_pill_width(ui: &Ui, m: &Metrics) -> f32 {
 pub const PILL_BORDER: f32 = crate::TOGGLE_BORDER;
 
 /// Paint and run the end pill of an elbow as the detach/attach toggle.
-/// `rect` keeps the elbow-end shape (round right end). State is in the text
-/// (DETACH / ATTACH), never colour alone; the border makes it read as a button.
+/// `rect` keeps the elbow-end shape (round right end). No text: attached it
+/// is the elbow colour with a highlight outline; detached the colours swap
+/// and a thin inner line shows it pressed in. The state is also in the
+/// tooltip and the accessibility label.
 pub fn detach_pill(ui: &mut Ui, rect: Rect, id: Id, color: Color32, title: &str, detached: bool) -> Response {
     let resp = ui.interact(rect, id, Sense::click());
     let r = (rect.height() / 2.0).clamp(0.0, 255.0) as u8;
     let cr = CornerRadius { nw: 0, sw: 0, ne: r, se: r };
-    let ink = ink_on(color);
-    let fill = if resp.hovered() { crate::tint(color, 0.25) } else { color };
+    let (fill, outline) = pill_colors(color, detached);
+    let width = if resp.hovered() { PILL_BORDER + 0.5 } else { PILL_BORDER };
     let p = ui.painter();
     p.rect_filled(rect, cr, fill);
-    p.rect_stroke(rect, cr, Stroke::new(PILL_BORDER, ink), StrokeKind::Inside);
-    if resp.has_focus() {
-        p.rect_stroke(rect.shrink(2.5), cr, Stroke::new(1.0, ink), StrokeKind::Inside);
+    p.rect_stroke(rect, cr, Stroke::new(width, outline), StrokeKind::Inside);
+    if detached {
+        let ri = r.saturating_sub(3);
+        let icr = CornerRadius { nw: 0, sw: 0, ne: ri, se: ri };
+        p.rect_stroke(rect.shrink(3.0), icr, Stroke::new(1.0, outline), StrokeKind::Inside);
     }
-    let label = detach_label(detached);
-    p.text(
-        pos2(rect.center().x - rect.height() / 8.0, rect.center().y),
-        Align2::CENTER_CENTER,
-        label,
-        FontId::proportional((rect.height() - 3.0).clamp(8.0, 13.0)),
-        ink_on(fill),
-    );
-    let info = format!("{label} {}", title.to_uppercase());
+    if resp.has_focus() {
+        p.rect_stroke(rect.expand(1.0), cr, Stroke::new(1.0, ink_on(fill)), StrokeKind::Outside);
+    }
+    let info = format!("{} {} ({})", detach_label(detached), title.to_uppercase(), if detached { "detached" } else { "attached" });
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, &info));
     resp.on_hover_text(detach_tooltip(title, detached))
 }
@@ -343,7 +363,7 @@ pub fn detach_viewport_id(id: Id) -> ViewportId {
     ViewportId::from_hash_of(("rustcars-detach-vp", id))
 }
 
-/// Show `add` in its own window, wrapped in the same elbow with an ATTACH
+/// Show `add` in its own window, wrapped in the same elbow with a pressed-in
 /// pill. Clicking the pill or closing the window attaches it (sets
 /// `state.detached = false`). Uses an immediate viewport, so `add` may borrow;
 /// on a backend without multiple viewports egui embeds it as a window.
@@ -403,7 +423,7 @@ pub fn detached_window<R>(
 
 /// Text left in the parent while an elbow is in its own window.
 pub fn detached_stub_text(title: &str) -> String {
-    format!("{}: detached, in its own window. Click ATTACH to bring it back.", title.to_uppercase())
+    format!("{}: detached, in its own window. Click the end pill to bring it back.", title.to_uppercase())
 }
 
 /// A titled LCARS group box (thin elbow). `.detachable(salt)` turns its end
