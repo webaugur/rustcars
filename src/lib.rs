@@ -11,6 +11,9 @@ use std::sync::Arc;
 #[cfg(all(feature = "web", target_arch = "wasm32"))]
 pub mod web;
 
+pub mod group;
+pub use group::{DetachState, GroupBox, group_box, group_box_with};
+
 // ---------------------------------------------------------------- palette
 /// [PROJECT] palette. Base hues sampled from the user's reference screenshots (IMG2 tabs,
 /// IMG1 buttons, IMG3 lists). Frame hues are brightened variants of the sampled tab colors so

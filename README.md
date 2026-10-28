@@ -105,7 +105,13 @@ rustcars::apply_theme(ctx, &t);
 rustcars::LcarsFrame::new(&t, rustcars::Side::Left, 1.0).show(ui, &t, |ui| {
     rustcars::lcars_button(ui, &t, "Engage", t.primary, egui::vec2(150.0, 44.0), rustcars::Cap::Both, true);
 });
+// A thin group elbow whose end pill detaches it into its own window:
+rustcars::GroupBox::new("RF patch", rustcars::palette::TAN)
+    .detachable("rf-patch")
+    .show(ui, |ui| { ui.label("..."); });
 ```
+
+See manual section 3.7 for group boxes and detaching.
 
 ## Credits
 
