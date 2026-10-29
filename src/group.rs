@@ -338,6 +338,9 @@ pub struct DetachState {
     pub size: Option<Vec2>,
     /// Last outer position of the detached window.
     pub pos: Option<egui::Pos2>,
+    /// The detached window did not draw last frame (backend could not open
+    /// it). Shown as plain text in the stub; cleared when it draws again.
+    pub failed: bool,
 }
 
 impl DetachState {
@@ -368,6 +371,13 @@ pub fn detach_viewport_id(id: Id) -> ViewportId {
 /// `state.detached = false`). Uses an immediate viewport, so `add` may borrow;
 /// on a backend without multiple viewports egui embeds it as a window.
 /// Call it every frame while `state.detached`; stop calling it to close.
+///
+/// `add` is `FnMut` on purpose: eframe runs an immediate viewport's callback
+/// through `Context::run_ui`, which may run it twice in one frame (a second
+/// pass after `request_discard`, up to `Options::max_passes`) and paints only
+/// the last pass. So the contents are drawn in every pass. If the backend
+/// could not open the window the callback does not run at all; then this
+/// returns `None` and sets `state.failed`, and the next frame tries again.
 pub fn detached_window<R>(
     ctx: &egui::Context,
     id: Id,
@@ -375,8 +385,29 @@ pub fn detached_window<R>(
     title: &str,
     color: Color32,
     state: &mut DetachState,
-    add: impl FnOnce(&mut Ui) -> R,
+    add: impl FnMut(&mut Ui) -> R,
 ) -> Option<R> {
+    detached_window_in(ctx, id, m, title, color, state, add, |vp, builder, cb| {
+        ctx.show_viewport_immediate(vp, builder, |ui, _class| cb(ui));
+    })
+}
+
+/// [`detached_window`] with the viewport runner passed in. `run` must call
+/// `cb` with the window's `Ui` zero or more times; tests use it to act like a
+/// backend that runs the callback twice or not at all.
+#[doc(hidden)]
+#[allow(clippy::too_many_arguments)]
+pub fn detached_window_in<R>(
+    ctx: &egui::Context,
+    id: Id,
+    m: &Metrics,
+    title: &str,
+    color: Color32,
+    state: &mut DetachState,
+    mut add: impl FnMut(&mut Ui) -> R,
+    run: impl FnOnce(ViewportId, ViewportBuilder, &mut dyn FnMut(&mut Ui)),
+) -> Option<R> {
+    let _ = ctx;
     let mut builder = ViewportBuilder::default()
         .with_title(title.to_uppercase())
         .with_inner_size(state.size.unwrap_or(vec2(720.0, 480.0)))
@@ -384,41 +415,60 @@ pub fn detached_window<R>(
     if let Some(pos) = state.pos {
         builder = builder.with_position(pos);
     }
-    let mut add = Some(add);
     let pill_id = id.with("pill-window");
-    let (out, attach, size, pos) = ctx.show_viewport_immediate(detach_viewport_id(id), builder, |ui, _class| {
+    let mut out: Option<R> = None;
+    let mut ran = false;
+    let mut attach = false;
+    let mut size = None;
+    let mut pos = None;
+    let mut cb = |ui: &mut Ui| {
+        ran = true;
         let closing = ui.input(|i| i.viewport().close_requested());
         let info = ui.input(|i| i.viewport().clone());
-        let mut out = None;
-        let mut attach = closing;
+        if closing {
+            attach = true;
+        }
         egui::Frame::central_panel(ui.style()).show(ui, |ui| {
             egui::ScrollArea::vertical()
                 .id_salt(("rustcars-detach-scroll", id))
                 .auto_shrink([false, false])
                 .show(ui, |ui| {
-                    let (r, pill) = group_box_full(ui, m, title, color, 0.0, Some((pill_id, true)), |ui| {
-                        add.take().map(|f| f(ui))
-                    }, |_| {});
-                    out = r;
+                    let (r, pill) = group_box_full(ui, m, title, color, 0.0, Some((pill_id, true)), &mut add, |_| {});
+                    // Every pass draws the contents; keep the latest value.
+                    out = Some(r);
                     if pill.is_some_and(|p| p.clicked()) {
                         attach = true;
                     }
                 });
         });
-        let size = info.inner_rect.map(|r| r.size()).filter(|s| s.x >= 64.0 && s.y >= 64.0);
-        let pos = info.outer_rect.map(|r| r.min);
-        (out, attach, size, pos)
-    });
+        if let Some(s) = info.inner_rect.map(|r| r.size()).filter(|s| s.x >= 64.0 && s.y >= 64.0) {
+            size = Some(s);
+        }
+        if let Some(p) = info.outer_rect.map(|r| r.min) {
+            pos = Some(p);
+        }
+    };
+    run(detach_viewport_id(id), builder, &mut cb);
     if size.is_some() {
         state.size = size;
     }
     if pos.is_some() {
         state.pos = pos;
     }
+    state.failed = !ran;
     if attach {
         state.detached = false;
+        state.failed = false;
     }
     out
+}
+
+/// Stub text when the detached window could not be drawn.
+pub fn detach_failed_text(title: &str) -> String {
+    format!(
+        "{}: detached window failed: the window system did not draw it; click the pill to bring it back.",
+        title.to_uppercase()
+    )
 }
 
 /// Text left in the parent while an elbow is in its own window.
@@ -449,31 +499,52 @@ impl<'a> GroupBox<'a> {
         self.detach = Some(DetachState::id(salt));
         self
     }
-    /// Draw it. Contents run exactly once per frame: here when attached, in
-    /// the detached window when detached. Returns their value.
-    pub fn show<R>(self, ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> R {
+    /// Draw it. Returns the contents' value, or `None` in a frame where the
+    /// detached window did not draw (the stub then says so in plain text;
+    /// the next frame tries again). Attached, the contents run once here.
+    /// Detached, they run in the window, once per egui pass of that window
+    /// (eframe may run two passes and paints the last; see
+    /// [`detached_window`]), never in the parent. Hence `FnMut`.
+    pub fn show<R>(self, ui: &mut Ui, add: impl FnMut(&mut Ui) -> R) -> Option<R> {
+        let ctx = ui.ctx().clone();
+        self.show_in(ui, add, |vp, builder, cb| {
+            ctx.show_viewport_immediate(vp, builder, |ui, _class| cb(ui));
+        })
+    }
+
+    /// [`Self::show`] with the viewport runner passed in (tests).
+    #[doc(hidden)]
+    pub fn show_in<R>(
+        self,
+        ui: &mut Ui,
+        mut add: impl FnMut(&mut Ui) -> R,
+        run: impl FnOnce(ViewportId, ViewportBuilder, &mut dyn FnMut(&mut Ui)),
+    ) -> Option<R> {
         let Some(id) = self.detach else {
-            return group_box_with(ui, &self.metrics, self.title, self.color, add);
+            return Some(group_box_with(ui, &self.metrics, self.title, self.color, add));
         };
         let ctx = ui.ctx().clone();
         let mut st = DetachState::load(&ctx, id);
         let pill_id = id.with("pill");
         if !st.detached {
-            let (r, pill) = group_box_full(ui, &self.metrics, self.title, self.color, 0.0, Some((pill_id, false)), add, |_| {});
+            let (r, pill) = group_box_full(ui, &self.metrics, self.title, self.color, 0.0, Some((pill_id, false)), &mut add, |_| {});
             if pill.is_some_and(|p| p.clicked()) {
                 st.detached = true;
+                st.failed = false;
                 st.store(&ctx, id);
             }
-            return r;
+            return Some(r);
         }
+        let stub = if st.failed { detach_failed_text(self.title) } else { detached_stub_text(self.title) };
         let ((), pill) = group_box_full(ui, &self.metrics, self.title, self.color, 0.0, Some((pill_id, true)), |ui| {
-            ui.label(detached_stub_text(self.title));
+            ui.label(stub);
         }, |_| {});
-        let out = detached_window(&ctx, id, &self.metrics, self.title, self.color, &mut st, add);
+        let out = detached_window_in(&ctx, id, &self.metrics, self.title, self.color, &mut st, add, run);
         if pill.is_some_and(|p| p.clicked()) {
             st.detached = false;
+            st.failed = false;
         }
         st.store(&ctx, id);
-        out.expect("detached window ran its contents")
+        out
     }
 }

@@ -234,3 +234,74 @@ fn nested_detach_page_and_sub_panels() {
     frame(&ctx);
     assert_eq!(frame(&ctx), (1, 1, false, false, false));
 }
+
+/// eframe runs an immediate viewport's callback through `run_ui`, which may
+/// do two passes in one frame (request_discard) or none (window could not
+/// open). The 873aa24 crash: second pass found the contents already taken,
+/// `out` became None and `.expect` panicked.
+/// `passes` = 0: the runner never calls back. Otherwise the callback runs
+/// in a separate context's `run_ui`, as eframe does, asking for a discard
+/// so egui itself runs it `passes` times (max_passes).
+fn rf_with_runner(ctx: &egui::Context, passes: usize, runs: &Cell<u32>) -> (egui::FullOutput, Option<u32>) {
+    let mut ret = None;
+    let vp = self::ctx();
+    vp.options_mut(|o| o.max_passes = std::num::NonZeroUsize::new(passes.max(1)).unwrap());
+    let out = run(ctx, input(vec![]), |ui| {
+        ret = GroupBox::new("RF patch", palette::TAN).detachable("rf-runner").show_in(
+            ui,
+            |ui| {
+                runs.set(runs.get() + 1);
+                ui.label("CONTENT");
+                runs.get()
+            },
+            |_vp, _b, cb| {
+                if passes == 0 {
+                    return;
+                }
+                let _ = run(&vp, input(vec![]), |ui| {
+                    cb(ui);
+                    ui.ctx().request_discard("test: second pass like eframe");
+                });
+            },
+        );
+    });
+    (out, ret)
+}
+
+#[test]
+fn viewport_callback_twice_draws_contents_each_pass_without_panic() {
+    let ctx = ctx();
+    let id = DetachState::id("rf-runner");
+    DetachState { detached: true, ..Default::default() }.store(&ctx, id);
+    let runs = Cell::new(0);
+    for _ in 0..3 {
+        runs.set(0);
+        let (_, ret) = rf_with_runner(&ctx, 2, &runs);
+        assert_eq!(runs.get(), 2, "contents drawn once in each of the two passes, never in the parent");
+        assert_eq!(ret, Some(2), "value from the last pass");
+        assert!(!DetachState::load(&ctx, id).failed);
+    }
+}
+
+#[test]
+fn viewport_callback_not_run_falls_back_with_visible_text() {
+    let ctx = ctx();
+    let id = DetachState::id("rf-runner");
+    DetachState { detached: true, ..Default::default() }.store(&ctx, id);
+    let runs = Cell::new(0);
+    let (_, ret) = rf_with_runner(&ctx, 0, &runs);
+    assert_eq!((runs.get(), ret), (0, None), "no panic, no value");
+    let st = DetachState::load(&ctx, id);
+    assert!(st.detached && st.failed);
+    let (out, _) = rf_with_runner(&ctx, 0, &runs);
+    assert!(
+        texts(&out).iter().any(|(s, _)| s.contains("RF PATCH: detached window failed")),
+        "failure shown as plain text in the stub"
+    );
+    // Window works again: contents come back, failure text goes.
+    rf_with_runner(&ctx, 1, &runs);
+    let (out, ret) = rf_with_runner(&ctx, 1, &runs);
+    assert!(ret.is_some());
+    assert!(!DetachState::load(&ctx, id).failed);
+    assert!(!texts(&out).iter().any(|(s, _)| s.contains("failed")));
+}

@@ -102,7 +102,8 @@ rustcars::GroupBox::new("RF patch", rustcars::palette::TAN)
 - In the original place the elbow stays, with the text "RF PATCH: detached, in its own window. Click the end pill to bring it back."
 - Clicking either pill, or closing the window, puts the group back.
 - Group boxes nest. A detached group inside a page that is itself detached stays in its own window; the attached ones travel with the page.
-- The contents run once per frame, in whichever place they are shown.
+- The contents are drawn only in the place they are shown. In a detached window egui may draw a frame twice, so the contents closure can run more than once there: pass a closure that can be called again (`FnMut`). `show` returns `Option`: `None` in a frame where the window could not be drawn.
+- If the window system cannot open the window, the stub says so in plain text ("RF PATCH: detached window failed: …; click the pill to bring it back") and the next frame tries again.
 
 Where a group is lives in egui memory under its name (`rustcars::DetachState`). An app that wants it remembered between runs can read and write it with `DetachState::load` and `store`.
 
