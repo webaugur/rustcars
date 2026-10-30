@@ -523,11 +523,16 @@ pub struct DetachOpts {
     /// the contents get exactly the visible window, so a page sized from the
     /// height (a chart, a dial) fills it and scrolls on its own.
     pub scroll: bool,
+    /// Draw the elbow and detach pill around the contents. Off: the contents
+    /// get the bare window (an app that frames its own pages, with its own
+    /// pill, so docked and detached look the same). Return attach from the
+    /// contents (see [`DetachState`]) by setting `detached = false` after.
+    pub chrome: bool,
 }
 
 impl Default for DetachOpts {
     fn default() -> Self {
-        Self { default_size: vec2(720.0, 480.0), min_size: vec2(240.0, 120.0), scroll: true }
+        Self { default_size: vec2(720.0, 480.0), min_size: vec2(240.0, 120.0), scroll: true, chrome: true }
     }
 }
 
@@ -659,7 +664,19 @@ pub fn detached_window_in_opts<R>(
         if closing {
             attach = true;
         }
-        egui::Frame::central_panel(ui.style()).show(ui, |ui| {
+        let mut panel = egui::Frame::central_panel(ui.style());
+        if !opts.chrome {
+            // Like a main window's page: no bottom margin, the page's own
+            // frame runs to the window's bottom edge.
+            panel = panel.inner_margin(egui::Margin { left: 8, right: 8, top: 8, bottom: 0 });
+        }
+        panel.show(ui, |ui| {
+            if !opts.chrome {
+                let r = ui.available_rect_before_wrap();
+                ui.set_clip_rect(ui.clip_rect().intersect(r));
+                out = Some(add(ui));
+                return;
+            }
             let fill = !opts.scroll;
             let mut body = |ui: &mut Ui| {
                 let (r, pill) = group_box_fill(ui, m, title, color, 0.0, Some((pill_id, true)), fill, &mut add, |_| {});
@@ -818,7 +835,7 @@ mod detach_opts_tests {
 
     #[test]
     fn open_size_raises_to_min_and_caps_at_monitor() {
-        let o = DetachOpts { default_size: vec2(1400.0, 900.0), min_size: vec2(900.0, 600.0), scroll: false };
+        let o = DetachOpts { default_size: vec2(1400.0, 900.0), min_size: vec2(900.0, 600.0), scroll: false, chrome: true };
         assert_eq!(o.open_size(None, None), vec2(1400.0, 900.0));
         assert_eq!(o.open_size(Some(vec2(500.0, 400.0)), None), vec2(900.0, 600.0), "saved raised to min");
         assert_eq!(o.open_size(Some(vec2(1000.0, 700.0)), None), vec2(1000.0, 700.0), "saved wins");
@@ -845,5 +862,19 @@ mod detach_opts_tests {
         );
         out.textures_delta.clear();
         assert!(bottom.is_finite() && bottom <= 500.0, "{bottom}");
+        // Bare: the contents get the window less the side/top margins.
+        let o = DetachOpts { scroll: false, chrome: false, ..Default::default() };
+        let mut got = Rect::NOTHING;
+        let mut out = ctx.run_ui(
+            egui::RawInput { screen_rect: Some(Rect::from_min_size(pos2(0.0, 0.0), vec2(700.0, 500.0))), ..Default::default() },
+            |ui| {
+                let c = ui.ctx().clone();
+                detached_window_in_opts(&c, Id::new("b"), &Metrics::default(), "B", Color32::GRAY, &mut st, o, |ui| {
+                    got = ui.available_rect_before_wrap();
+                }, |_, _, cb| { let mut child = ui.new_child(UiBuilder::new()); cb(&mut child, false); });
+            },
+        );
+        out.textures_delta.clear();
+        assert!((got.bottom() - 500.0).abs() < 1.0 && (got.top() - 8.0).abs() < 1.0, "{got:?}");
     }
 }
