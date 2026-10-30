@@ -399,23 +399,34 @@ fn content_takes_clicks_maximized_snapped_and_restored() {
 
 
 /// The window manager maximizes the detached window (super+Up): the
-/// window's own pass sends Maximized(false) at once; snaps are left alone.
+/// window's own pass sends Maximized(false) for that window at once (the
+/// command leaves through the parent's output, as in eframe); a half snap is
+/// left alone.
 #[test]
 fn a_maximized_detached_window_is_restored_and_snaps_are_not() {
     let (ctx, win) = setup();
     detach_from_main(&ctx, &win, false);
+    let vp = detach_viewport_id(DetachState::id(("page", TITLE)));
+    let window_cmds = || -> Vec<egui::ViewportCommand> {
+        let mut v: Vec<_> = ROOT_CMDS.with(|c| c.borrow_mut().drain(..).filter(|(id, _)| *id == vp).flat_map(|(_, v)| v).collect());
+        v.extend(win.borrow().commands.clone());
+        v
+    };
     {
         let mut w = win.borrow_mut();
         w.at = pos2(0.0, 0.0);
         w.size = Some(vec2(1920.0, 1050.0));
         w.maximized = true;
     }
+    ROOT_CMDS.with(|c| c.borrow_mut().clear());
     frame(&ctx, vec![], false);
-    assert!(win.borrow().commands.contains(&egui::ViewportCommand::Maximized(false)), "{:?}", win.borrow().commands);
+    let c = window_cmds();
+    assert!(c.contains(&egui::ViewportCommand::Maximized(false)), "{c:?}");
     win.borrow_mut().maximized = false;
     win.borrow_mut().size = Some(vec2(960.0, 1050.0));
     frame(&ctx, vec![], false);
-    assert!(!win.borrow().commands.iter().any(|c| matches!(c, egui::ViewportCommand::Maximized(_))), "half snap untouched");
+    let c = window_cmds();
+    assert!(!c.iter().any(|c| matches!(c, egui::ViewportCommand::Maximized(_))), "half snap untouched: {c:?}");
     let b = win.borrow().builders.last().cloned().unwrap();
     assert_eq!(b.maximize_button, Some(false));
 }
