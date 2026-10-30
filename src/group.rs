@@ -352,6 +352,13 @@ pub struct DetachState {
     /// The detached window did not draw last frame (backend could not open
     /// it). Shown as plain text in the stub; cleared when it draws again.
     pub failed: bool,
+    /// The window is open: its callback ran last frame. The saved size and
+    /// position go to the viewport builder only while it is not, i.e. on the
+    /// frame it opens. Passing them every frame made eframe patch the live
+    /// window back to last frame's place (`ViewportBuilder::patch` sends
+    /// `OuterPosition` / `InnerSize` on any change), which fought every
+    /// window-manager move and resize.
+    pub open: bool,
 }
 
 impl DetachState {
@@ -369,6 +376,7 @@ impl DetachState {
     /// Flip attached/detached.
     pub fn toggle(&mut self) {
         self.detached = !self.detached;
+        self.open = false;
     }
 }
 
@@ -454,10 +462,14 @@ pub fn detached_window_in<R>(
         .with_title(title.to_uppercase())
         .with_decorations(false)
         .with_resizable(true)
-        .with_inner_size(state.size.unwrap_or(vec2(720.0, 480.0)))
         .with_min_inner_size([240.0, 120.0]);
-    if let Some(pos) = state.pos {
-        builder = builder.with_position(pos);
+    // Place and size only when the window opens; afterwards the window
+    // manager owns them (see `DetachState::open`).
+    if !state.open {
+        builder = builder.with_inner_size(state.size.unwrap_or(vec2(720.0, 480.0)));
+        if let Some(pos) = state.pos {
+            builder = builder.with_position(pos);
+        }
     }
     let pill_id = id.with("pill-window");
     let mut out: Option<R> = None;
@@ -523,9 +535,11 @@ pub fn detached_window_in<R>(
         state.pos = pos;
     }
     state.failed = !ran;
+    state.open = ran;
     if attach {
         state.detached = false;
         state.failed = false;
+        state.open = false;
     }
     out
 }
@@ -610,6 +624,7 @@ impl<'a> GroupBox<'a> {
         if pill.is_some_and(|p| p.clicked()) {
             st.detached = false;
             st.failed = false;
+            st.open = false;
         }
         st.store(&ctx, id);
         out
