@@ -17,7 +17,8 @@ web-server = ["dep:axum", "dep:tokio", "dep:tower-http"]
 
 [dependencies]
 egui = "0.37"
-eframe = "0.37"
+# glow only: the default "wgpu" pulls Vulkan/wgpu into every app (HamSpot #gpu-safe-default).
+eframe = { version = "0.37", default-features = false, features = ["accesskit", "clipboard", "default_fonts", "glow", "links", "persistence", "system_fonts", "wayland", "x11"] }
 
 # web-server (native only)
 axum = { version = "0.8", features = ["ws"], optional = true }
