@@ -291,6 +291,24 @@ pub fn group_box_full<R>(
     add: impl FnOnce(&mut Ui) -> R,
     slot_ui: impl FnOnce(&mut Ui),
 ) -> (R, Option<Response>) {
+    group_box_fill(ui, m, title, color, slot_w, pill, false, add, slot_ui)
+}
+
+/// [`group_box_full`]; with `fill` the frame takes the whole available
+/// height and the contents get a bounded rect (a detached window without
+/// scroll), instead of the frame growing to fit the contents.
+#[allow(clippy::too_many_arguments)]
+pub fn group_box_fill<R>(
+    ui: &mut Ui,
+    m: &Metrics,
+    title: &str,
+    color: Color32,
+    slot_w: f32,
+    pill: Option<(Id, bool)>,
+    fill: bool,
+    add: impl FnOnce(&mut Ui) -> R,
+    slot_ui: impl FnOnce(&mut Ui),
+) -> (R, Option<Response>) {
     let mut mm = *m;
     if pill.is_some() {
         mm.cap_w = detach_pill_width(ui, m);
@@ -302,11 +320,19 @@ pub fn group_box_full<R>(
     let avail = ui.available_rect_before_wrap();
     let (left, top, width) = (avail.left(), avail.top(), ui.available_width());
     let probe = layout_with_slot(left, top, width, 0.0, m, slot_w);
-    let max = Rect::from_min_max(probe.inner.min, pos2(probe.inner.right(), f32::INFINITY));
+    let bottom_inset = (probe.outer.bottom() - probe.inner.bottom()).max(0.0);
+    let fill_h = (fill && avail.bottom().is_finite())
+        .then(|| (avail.bottom() - bottom_inset - probe.inner.top()).max(0.0));
+    let max_y = fill_h.map_or(f32::INFINITY, |h| probe.inner.top() + h);
+    let max = Rect::from_min_max(probe.inner.min, pos2(probe.inner.right(), max_y));
     let mut child = ui.new_child(UiBuilder::new().max_rect(max).layout(*ui.layout()));
+    if fill_h.is_some() {
+        child.set_clip_rect(max.intersect(ui.clip_rect()));
+    }
     let r = add(&mut child);
     let used = child.min_rect();
-    let l = layout_with_slot(left, top, width, (used.bottom() - probe.inner.top()).max(0.0), m, slot_w);
+    let h = fill_h.unwrap_or((used.bottom() - probe.inner.top()).max(0.0));
+    let l = layout_with_slot(left, top, width, h, m, slot_w);
     let resp = ui.allocate_rect(l.outer, Sense::hover());
     let label = title.to_owned();
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, &label));
@@ -485,6 +511,63 @@ pub fn detach_viewport_id(id: Id) -> ViewportId {
 /// the last pass. So the contents are drawn in every pass. If the backend
 /// could not open the window the callback does not run at all; then this
 /// returns `None` and sets `state.failed`, and the next frame tries again.
+/// How a detached window opens and what it holds.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct DetachOpts {
+    /// Inner size when no size was saved.
+    pub default_size: Vec2,
+    /// Smallest inner size the contents need; a saved size is raised to it.
+    /// Both are capped at [`SAVED_MAX_SHARE`] of the monitor.
+    pub min_size: Vec2,
+    /// Wrap the contents in a vertical scroll area (unbounded height). Off:
+    /// the contents get exactly the visible window, so a page sized from the
+    /// height (a chart, a dial) fills it and scrolls on its own.
+    pub scroll: bool,
+}
+
+impl Default for DetachOpts {
+    fn default() -> Self {
+        Self { default_size: vec2(720.0, 480.0), min_size: vec2(240.0, 120.0), scroll: true }
+    }
+}
+
+impl DetachOpts {
+    /// The inner size a window opens at: saved (or default), raised to the
+    /// minimum, capped at the monitor share.
+    pub fn open_size(&self, saved: Option<Vec2>, monitor: Option<Vec2>) -> Vec2 {
+        let mut size = saved.unwrap_or(self.default_size).max(self.min_size);
+        if let Some(m) = monitor.filter(|m| m.x > 0.0 && m.y > 0.0) {
+            size = size.min(m * SAVED_MAX_SHARE);
+        }
+        size
+    }
+
+    /// The minimum inner size, capped at the monitor share.
+    pub fn min_inner(&self, monitor: Option<Vec2>) -> Vec2 {
+        match monitor.filter(|m| m.x > 0.0 && m.y > 0.0) {
+            Some(m) => self.min_size.min(m * SAVED_MAX_SHARE),
+            None => self.min_size,
+        }
+    }
+}
+
+/// [`detached_window`] with an open size, minimum size and scroll choice.
+#[allow(clippy::too_many_arguments)]
+pub fn detached_window_with<R>(
+    ctx: &egui::Context,
+    id: Id,
+    m: &Metrics,
+    title: &str,
+    color: Color32,
+    state: &mut DetachState,
+    opts: DetachOpts,
+    add: impl FnMut(&mut Ui) -> R,
+) -> Option<R> {
+    detached_window_in_opts(ctx, id, m, title, color, state, opts, add, |vp, builder, cb| {
+        ctx.show_viewport_immediate(vp, builder, |ui, class| cb(ui, class == egui::ViewportClass::Immediate));
+    })
+}
+
 pub fn detached_window<R>(
     ctx: &egui::Context,
     id: Id,
@@ -512,6 +595,23 @@ pub fn detached_window_in<R>(
     title: &str,
     color: Color32,
     state: &mut DetachState,
+    add: impl FnMut(&mut Ui) -> R,
+    run: impl FnOnce(ViewportId, ViewportBuilder, &mut dyn FnMut(&mut Ui, bool)),
+) -> Option<R> {
+    detached_window_in_opts(ctx, id, m, title, color, state, DetachOpts::default(), add, run)
+}
+
+/// [`detached_window_in`] with [`DetachOpts`].
+#[doc(hidden)]
+#[allow(clippy::too_many_arguments)]
+pub fn detached_window_in_opts<R>(
+    ctx: &egui::Context,
+    id: Id,
+    m: &Metrics,
+    title: &str,
+    color: Color32,
+    state: &mut DetachState,
+    opts: DetachOpts,
     mut add: impl FnMut(&mut Ui) -> R,
     run: impl FnOnce(ViewportId, ViewportBuilder, &mut dyn FnMut(&mut Ui, bool)),
 ) -> Option<R> {
@@ -524,7 +624,7 @@ pub fn detached_window_in<R>(
         .with_title(title.to_uppercase())
         .with_decorations(false)
         .with_resizable(true)
-        .with_min_inner_size([240.0, 120.0])
+        .with_min_inner_size(opts.min_inner(monitor))
         // Never maximized or fullscreen (see `unmaximize_cmds`). Tiling
         // (half / quarter snaps) stays the window manager's.
         .with_maximize_button(false);
@@ -533,10 +633,7 @@ pub fn detached_window_in<R>(
     if !state.open {
         // Opens restored, never maximized (even when the main window is).
         // A size saved by an older version while maximized is capped too.
-        let mut size = state.size.unwrap_or(vec2(720.0, 480.0));
-        if let Some(m) = monitor.filter(|m| m.x > 0.0 && m.y > 0.0) {
-            size = vec2(size.x.min(m.x * SAVED_MAX_SHARE), size.y.min(m.y * SAVED_MAX_SHARE));
-        }
+        let size = opts.open_size(state.size, monitor);
         builder = builder.with_maximized(false).with_inner_size(size);
         if let Some(pos) = state.pos {
             builder = builder.with_position(pos);
@@ -563,17 +660,26 @@ pub fn detached_window_in<R>(
             attach = true;
         }
         egui::Frame::central_panel(ui.style()).show(ui, |ui| {
-            egui::ScrollArea::vertical()
-                .id_salt(("rustcars-detach-scroll", id))
-                .auto_shrink([false, false])
-                .show(ui, |ui| {
-                    let (r, pill) = group_box_full(ui, m, title, color, 0.0, Some((pill_id, true)), &mut add, |_| {});
-                    // Every pass draws the contents; keep the latest value.
-                    out = Some(r);
-                    if pill.is_some_and(|p| p.clicked()) {
-                        attach = true;
-                    }
-                });
+            let fill = !opts.scroll;
+            let mut body = |ui: &mut Ui| {
+                let (r, pill) = group_box_fill(ui, m, title, color, 0.0, Some((pill_id, true)), fill, &mut add, |_| {});
+                // Every pass draws the contents; keep the latest value.
+                out = Some(r);
+                if pill.is_some_and(|p| p.clicked()) {
+                    attach = true;
+                }
+            };
+            if opts.scroll {
+                egui::ScrollArea::vertical()
+                    .id_salt(("rustcars-detach-scroll", id))
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| body(ui));
+            } else {
+                // Exactly the visible window: the contents scroll on their own.
+                let r = ui.available_rect_before_wrap();
+                ui.set_clip_rect(ui.clip_rect().intersect(r));
+                body(ui);
+            }
         });
         if native {
             // No OS border: outline the window and give it a resize grip.
@@ -703,5 +809,41 @@ impl<'a> GroupBox<'a> {
         }
         st.store(&ctx, id);
         out
+    }
+}
+
+#[cfg(test)]
+mod detach_opts_tests {
+    use super::*;
+
+    #[test]
+    fn open_size_raises_to_min_and_caps_at_monitor() {
+        let o = DetachOpts { default_size: vec2(1400.0, 900.0), min_size: vec2(900.0, 600.0), scroll: false };
+        assert_eq!(o.open_size(None, None), vec2(1400.0, 900.0));
+        assert_eq!(o.open_size(Some(vec2(500.0, 400.0)), None), vec2(900.0, 600.0), "saved raised to min");
+        assert_eq!(o.open_size(Some(vec2(1000.0, 700.0)), None), vec2(1000.0, 700.0), "saved wins");
+        let m = vec2(1280.0, 800.0);
+        assert_eq!(o.open_size(None, Some(m)), m * SAVED_MAX_SHARE, "80% cap");
+        assert!(o.min_inner(Some(vec2(1000.0, 600.0))).y <= 480.0 + 0.01);
+    }
+
+    /// Without scroll the contents get the visible window, bounded.
+    #[test]
+    fn no_scroll_bounds_the_height() {
+        let ctx = egui::Context::default();
+        let mut st = DetachState { detached: true, ..Default::default() };
+        let mut bottom = f32::INFINITY;
+        let o = DetachOpts { scroll: false, ..Default::default() };
+        let mut out = ctx.run_ui(
+            egui::RawInput { screen_rect: Some(Rect::from_min_size(pos2(0.0, 0.0), vec2(700.0, 500.0))), ..Default::default() },
+            |ui| {
+                let c = ui.ctx().clone();
+                detached_window_in_opts(&c, Id::new("t"), &Metrics::default(), "T", Color32::GRAY, &mut st, o, |ui| {
+                    bottom = ui.available_rect_before_wrap().bottom();
+                }, |_, _, cb| { let mut child = ui.new_child(UiBuilder::new()); cb(&mut child, false); });
+            },
+        );
+        out.textures_delta.clear();
+        assert!(bottom.is_finite() && bottom <= 500.0, "{bottom}");
     }
 }
