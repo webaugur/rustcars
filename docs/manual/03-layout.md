@@ -101,6 +101,9 @@ rustcars::GroupBox::new("RF patch", rustcars::palette::TAN)
 - Detaching moves the elbow and everything in it to its own window, which shows the same elbow with a pressed-in pill.
 - In the original place the elbow stays, with the text "RF PATCH: detached, in its own window. Click the end pill to bring it back."
 - Clicking either pill, or closing the window, puts the group back.
+- The detached window has no title bar or border of its own: the elbow is its frame, with a thin outline in the elbow colour. **Drag the pill to move the window**; a click without moving still puts it back. The move is done by your window manager, so its own snapping (full, half or quarter screen) works as usual.
+- Resize it from the small grip in the bottom-right corner, or with your window manager's usual resize gestures. The window remembers its size and place, and is kept on screen.
+- Some window systems ignore move requests from applications. There the pill still docks the window, but dragging it does nothing; use your window manager's own move gesture (often Super + drag) instead.
 - Group boxes nest. A detached group inside a page that is itself detached stays in its own window; the attached ones travel with the page.
 - The contents are drawn only in the place they are shown. In a detached window egui may draw a frame twice, so the contents closure can run more than once there: pass a closure that can be called again (`FnMut`). `show` returns `Option`: `None` in a frame where the window could not be drawn.
 - If the window system cannot open the window, the stub says so in plain text ("RF PATCH: detached window failed: …; click the pill to bring it back") and the next frame tries again.

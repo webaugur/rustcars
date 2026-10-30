@@ -259,7 +259,7 @@ fn rf_with_runner(ctx: &egui::Context, passes: usize, runs: &Cell<u32>) -> (egui
                     return;
                 }
                 let _ = run(&vp, input(vec![]), |ui| {
-                    cb(ui);
+                    cb(ui, false);
                     ui.ctx().request_discard("test: second pass like eframe");
                 });
             },
@@ -304,4 +304,127 @@ fn viewport_callback_not_run_falls_back_with_visible_text() {
     assert!(ret.is_some());
     assert!(!DetachState::load(&ctx, id).failed);
     assert!(!texts(&out).iter().any(|(s, _)| s.contains("failed")));
+}
+
+
+/// A native detached window driven by a separate context (as eframe does).
+/// Returns the window context's output for each main frame.
+struct NativeWin {
+    main: egui::Context,
+    vp: egui::Context,
+    builder: Option<egui::ViewportBuilder>,
+}
+
+impl NativeWin {
+    fn new() -> Self {
+        let main = ctx();
+        DetachState { detached: true, ..Default::default() }.store(&main, DetachState::id("rf-native"));
+        Self { main, vp: ctx(), builder: None }
+    }
+    fn frame(&mut self, ev: Vec<Event>) -> egui::FullOutput {
+        let vp = self.vp.clone();
+        let mut vp_out = None;
+        let mut builder = None;
+        let _ = run(&self.main, input(vec![]), |ui| {
+            GroupBox::new("RF patch", palette::TAN).detachable("rf-native").show_in(
+                ui,
+                |ui| {
+                    ui.label("CONTENT");
+                },
+                |_id, b, cb| {
+                    builder = Some(b);
+                    vp_out = Some(run(&vp, input(ev.clone()), |ui| cb(ui, true)));
+                },
+            );
+        });
+        self.builder = builder;
+        vp_out.unwrap_or_default()
+    }
+    fn detached(&self) -> bool {
+        DetachState::load(&self.main, DetachState::id("rf-native")).detached
+    }
+}
+
+fn commands(out: &egui::FullOutput) -> Vec<egui::ViewportCommand> {
+    out.viewport_output.values().flat_map(|v| v.commands.clone()).collect()
+}
+
+#[test]
+fn detached_window_is_borderless_and_resizable() {
+    let mut w = NativeWin::new();
+    w.frame(vec![]);
+    let b = w.builder.clone().expect("window opened");
+    assert_eq!(b.decorations, Some(false), "no OS decorations");
+    assert_eq!(b.resizable, Some(true), "resizable so the window manager can snap it");
+    assert_eq!(b.max_inner_size, None, "no max size to block snapping");
+}
+
+#[test]
+fn dragging_the_pill_in_a_native_window_starts_a_window_move() {
+    let mut w = NativeWin::new();
+    w.frame(vec![]);
+    let out = w.frame(vec![]);
+    let pill = pills(&out).first().map(|p| p.0).expect("window pill");
+    let p = pill.center();
+    let b = |pos, pressed| Event::PointerButton { pos, button: PointerButton::Primary, pressed, modifiers: Default::default() };
+    let mut cmds = Vec::new();
+    for ev in [vec![Event::PointerMoved(p)], vec![b(p, true)], vec![Event::PointerMoved(p + vec2(30.0, 10.0))], vec![Event::PointerMoved(p + vec2(60.0, 20.0))]] {
+        cmds.extend(commands(&w.frame(ev)));
+    }
+    assert!(cmds.contains(&egui::ViewportCommand::StartDrag), "drag sends StartDrag: {cmds:?}");
+    w.frame(vec![b(p + vec2(60.0, 20.0), false)]);
+    w.frame(vec![]);
+    assert!(w.detached(), "a drag does not dock the window");
+}
+
+#[test]
+fn clicking_the_pill_in_a_native_window_still_docks_it() {
+    let mut w = NativeWin::new();
+    w.frame(vec![]);
+    let out = w.frame(vec![]);
+    let pill = pills(&out).first().map(|p| p.0).expect("window pill");
+    let mut cmds = Vec::new();
+    for ev in click_at(pill.center()) {
+        cmds.extend(commands(&w.frame(ev)));
+    }
+    assert!(!cmds.contains(&egui::ViewportCommand::StartDrag), "a click is not a drag");
+    assert!(!w.detached(), "click docks");
+}
+
+#[test]
+fn resize_grip_starts_a_native_resize() {
+    let mut w = NativeWin::new();
+    w.frame(vec![]);
+    let p = pos2(1000.0 - 5.0, 1400.0 - 5.0);
+    let b = |pos, pressed| Event::PointerButton { pos, button: PointerButton::Primary, pressed, modifiers: Default::default() };
+    let mut cmds = Vec::new();
+    for ev in [vec![Event::PointerMoved(p)], vec![b(p, true)], vec![Event::PointerMoved(p + vec2(20.0, 20.0))]] {
+        cmds.extend(commands(&w.frame(ev)));
+    }
+    assert!(cmds.contains(&egui::ViewportCommand::BeginResize(egui::ResizeDirection::SouthEast)), "{cmds:?}");
+}
+
+#[test]
+fn main_window_pill_never_moves_the_main_window() {
+    let ctx = ctx();
+    let runs = Cell::new(0);
+    rf_frame(&ctx, vec![], &runs);
+    let out = rf_frame(&ctx, vec![], &runs);
+    let p = pills(&out)[0].0.center();
+    let b = |pos, pressed| Event::PointerButton { pos, button: PointerButton::Primary, pressed, modifiers: Default::default() };
+    let mut cmds = Vec::new();
+    for ev in [vec![Event::PointerMoved(p)], vec![b(p, true)], vec![Event::PointerMoved(p + vec2(40.0, 0.0))], vec![b(p + vec2(40.0, 0.0), false)]] {
+        cmds.extend(commands(&rf_frame(&ctx, ev, &runs)));
+    }
+    assert!(!cmds.contains(&egui::ViewportCommand::StartDrag));
+}
+
+#[test]
+fn saved_position_is_kept_on_screen() {
+    let m = Some(vec2(1920.0, 1080.0));
+    let s = vec2(720.0, 480.0);
+    assert_eq!(clamp_window_pos(pos2(100.0, 100.0), s, m), pos2(100.0, 100.0));
+    assert_eq!(clamp_window_pos(pos2(5000.0, 3000.0), s, m), pos2(1920.0 - 120.0, 1080.0 - 48.0));
+    assert_eq!(clamp_window_pos(pos2(-5000.0, -50.0), s, m), pos2(120.0 - 720.0, 0.0));
+    assert_eq!(clamp_window_pos(pos2(-5000.0, -50.0), s, None), pos2(-5000.0, -50.0), "unknown monitor: unchanged");
 }

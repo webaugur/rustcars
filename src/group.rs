@@ -239,8 +239,15 @@ pub const PILL_BORDER: f32 = crate::TOGGLE_BORDER;
 /// is the elbow colour with a highlight outline; detached the colours swap
 /// and a thin inner line shows it pressed in. The state is also in the
 /// tooltip and the accessibility label.
+///
+/// Inside a native detached window, dragging the pill moves the window
+/// (`ViewportCommand::StartDrag`, a real window-manager move, so the WM's
+/// own snapping works); a click without movement still toggles.
 pub fn detach_pill(ui: &mut Ui, rect: Rect, id: Id, color: Color32, title: &str, detached: bool) -> Response {
-    let resp = ui.interact(rect, id, Sense::click());
+    let resp = ui.interact(rect, id, Sense::click_and_drag());
+    if resp.drag_started() && in_native_detached_window(ui.ctx()) {
+        ui.ctx().send_viewport_cmd(egui::ViewportCommand::StartDrag);
+    }
     let r = (rect.height() / 2.0).clamp(0.0, 255.0) as u8;
     let cr = CornerRadius { nw: 0, sw: 0, ne: r, se: r };
     let (fill, outline) = pill_colors(color, detached);
@@ -258,7 +265,11 @@ pub fn detach_pill(ui: &mut Ui, rect: Rect, id: Id, color: Color32, title: &str,
     }
     let info = format!("{} {} ({})", detach_label(detached), title.to_uppercase(), if detached { "detached" } else { "attached" });
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, &info));
-    resp.on_hover_text(detach_tooltip(title, detached))
+    let mut tip = detach_tooltip(title, detached);
+    if in_native_detached_window(ui.ctx()) {
+        tip.push_str(" Drag to move the window.");
+    }
+    resp.on_hover_text(tip)
 }
 
 /// [`group_box_slot`] whose end cap may be a detach pill: `pill` is the
@@ -361,6 +372,34 @@ impl DetachState {
     }
 }
 
+fn native_window_flag_id() -> Id {
+    Id::NULL.with("rustcars-detach-native-window")
+}
+
+/// True while drawing the contents of a detached window that is a real OS
+/// window (not embedded in the parent). Pills there drag the window.
+pub fn in_native_detached_window(ctx: &egui::Context) -> bool {
+    let id = native_window_flag_id();
+    ctx.data(|d| d.get_temp::<bool>(id)).unwrap_or(false)
+}
+
+/// Size of the resize grip in a detached window's bottom-right corner.
+pub const RESIZE_GRIP: f32 = 14.0;
+
+/// Keep a saved window position on screen: at least `keep` px of the window
+/// stays inside a monitor of `monitor` size.
+pub fn clamp_window_pos(pos: egui::Pos2, size: Vec2, monitor: Option<Vec2>) -> egui::Pos2 {
+    let keep = vec2(120.0, 48.0);
+    let Some(m) = monitor.filter(|m| m.x > keep.x && m.y > keep.y) else {
+        return pos;
+    };
+    let w = size.x.max(keep.x);
+    pos2(
+        pos.x.clamp(keep.x - w, m.x - keep.x),
+        pos.y.clamp(0.0, m.y - keep.y),
+    )
+}
+
 /// The detached window's viewport id for elbow `id`.
 pub fn detach_viewport_id(id: Id) -> ViewportId {
     ViewportId::from_hash_of(("rustcars-detach-vp", id))
@@ -388,13 +427,14 @@ pub fn detached_window<R>(
     add: impl FnMut(&mut Ui) -> R,
 ) -> Option<R> {
     detached_window_in(ctx, id, m, title, color, state, add, |vp, builder, cb| {
-        ctx.show_viewport_immediate(vp, builder, |ui, _class| cb(ui));
+        ctx.show_viewport_immediate(vp, builder, |ui, class| cb(ui, class == egui::ViewportClass::Immediate));
     })
 }
 
 /// [`detached_window`] with the viewport runner passed in. `run` must call
-/// `cb` with the window's `Ui` zero or more times; tests use it to act like a
-/// backend that runs the callback twice or not at all.
+/// `cb` with the window's `Ui` (and whether it is a native OS window) zero or
+/// more times; tests use it to act like a backend that runs the callback
+/// twice or not at all.
 #[doc(hidden)]
 #[allow(clippy::too_many_arguments)]
 pub fn detached_window_in<R>(
@@ -405,11 +445,15 @@ pub fn detached_window_in<R>(
     color: Color32,
     state: &mut DetachState,
     mut add: impl FnMut(&mut Ui) -> R,
-    run: impl FnOnce(ViewportId, ViewportBuilder, &mut dyn FnMut(&mut Ui)),
+    run: impl FnOnce(ViewportId, ViewportBuilder, &mut dyn FnMut(&mut Ui, bool)),
 ) -> Option<R> {
     let _ = ctx;
+    // Borderless: the elbow is the window's frame and its pill the handle.
+    // Resizable with only a small minimum, so the window manager can snap it.
     let mut builder = ViewportBuilder::default()
         .with_title(title.to_uppercase())
+        .with_decorations(false)
+        .with_resizable(true)
         .with_inner_size(state.size.unwrap_or(vec2(720.0, 480.0)))
         .with_min_inner_size([240.0, 120.0]);
     if let Some(pos) = state.pos {
@@ -421,8 +465,11 @@ pub fn detached_window_in<R>(
     let mut attach = false;
     let mut size = None;
     let mut pos = None;
-    let mut cb = |ui: &mut Ui| {
+    let flag = native_window_flag_id();
+    let mut cb = |ui: &mut Ui, native: bool| {
         ran = true;
+        let was = ui.ctx().data(|d| d.get_temp::<bool>(flag)).unwrap_or(false);
+        ui.ctx().data_mut(|d| d.insert_temp(flag, native));
         let closing = ui.input(|i| i.viewport().close_requested());
         let info = ui.input(|i| i.viewport().clone());
         if closing {
@@ -441,12 +488,32 @@ pub fn detached_window_in<R>(
                     }
                 });
         });
+        if native {
+            // No OS border: outline the window and give it a resize grip.
+            let full = ui.ctx().content_rect();
+            let stroke = Stroke::new(PILL_BORDER, color);
+            ui.painter().rect_stroke(full, 0.0, stroke, StrokeKind::Inside);
+            let grip = Rect::from_min_max(full.max - vec2(RESIZE_GRIP, RESIZE_GRIP), full.max);
+            let g = ui.interact(grip, id.with("resize-grip"), Sense::drag());
+            let g = g.on_hover_cursor(egui::CursorIcon::ResizeSouthEast).on_hover_text("Drag to resize");
+            for k in [4.0, 8.0, 12.0] {
+                ui.painter().line_segment(
+                    [pos2(full.max.x - k, full.max.y - 2.0), pos2(full.max.x - 2.0, full.max.y - k)],
+                    Stroke::new(1.0, pill_highlight(color)),
+                );
+            }
+            if g.drag_started() {
+                ui.ctx().send_viewport_cmd(egui::ViewportCommand::BeginResize(egui::ResizeDirection::SouthEast));
+            }
+        }
         if let Some(s) = info.inner_rect.map(|r| r.size()).filter(|s| s.x >= 64.0 && s.y >= 64.0) {
             size = Some(s);
         }
         if let Some(p) = info.outer_rect.map(|r| r.min) {
-            pos = Some(p);
+            let sz = info.outer_rect.map(|r| r.size()).unwrap_or(vec2(720.0, 480.0));
+            pos = Some(clamp_window_pos(p, sz, info.monitor_size));
         }
+        ui.ctx().data_mut(|d| d.insert_temp(flag, was));
     };
     run(detach_viewport_id(id), builder, &mut cb);
     if size.is_some() {
@@ -508,7 +575,7 @@ impl<'a> GroupBox<'a> {
     pub fn show<R>(self, ui: &mut Ui, add: impl FnMut(&mut Ui) -> R) -> Option<R> {
         let ctx = ui.ctx().clone();
         self.show_in(ui, add, |vp, builder, cb| {
-            ctx.show_viewport_immediate(vp, builder, |ui, _class| cb(ui));
+            ctx.show_viewport_immediate(vp, builder, |ui, class| cb(ui, class == egui::ViewportClass::Immediate));
         })
     }
 
@@ -518,7 +585,7 @@ impl<'a> GroupBox<'a> {
         self,
         ui: &mut Ui,
         mut add: impl FnMut(&mut Ui) -> R,
-        run: impl FnOnce(ViewportId, ViewportBuilder, &mut dyn FnMut(&mut Ui)),
+        run: impl FnOnce(ViewportId, ViewportBuilder, &mut dyn FnMut(&mut Ui, bool)),
     ) -> Option<R> {
         let Some(id) = self.detach else {
             return Some(group_box_with(ui, &self.metrics, self.title, self.color, add));
