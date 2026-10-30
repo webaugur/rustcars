@@ -78,3 +78,26 @@ fn headless_click_flips() {
         .expect("frame run timed out");
     assert!(on && changed);
 }
+
+/// P1c: bar variants are square; the panel variants keep radius 4.
+#[test]
+fn bar_buttons_are_square() {
+    let ctx = egui::Context::default();
+    rustcars::install_lcars_font(&ctx);
+    let t = rustcars::LcarsTheme::default();
+    let mut out = egui::FullOutput::default();
+    for _ in 0..2 {
+        out = ctx.run_ui(egui::RawInput::default(), |ui| {
+            let mut m = rustcars::Mode::Inactive;
+            rustcars::bar_mode_button(ui, &t, "Copy", &mut m, egui::vec2(100.0, 40.0));
+            let mut on = true;
+            rustcars::bar_toggle_button(ui, &t, "Live", &mut on, rustcars::palette::BRICK, egui::vec2(100.0, 40.0));
+        });
+        out.textures_delta.clear();
+    }
+    let rects: Vec<_> = out.shapes.iter().filter_map(|c| match &c.shape { egui::Shape::Rect(r) => Some(r.clone()), _ => None }).collect();
+    assert!(rects.len() >= 2);
+    for r in rects {
+        assert_eq!(r.corner_radius, egui::CornerRadius::ZERO, "{r:?}");
+    }
+}

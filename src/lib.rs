@@ -700,12 +700,25 @@ fn paint_mode_surface(
     hovered: bool,
     row: bool,
 ) {
+    paint_mode_surface_r(ui, t, rect, mode, label, hovered, row, CornerRadius::same(4));
+}
+
+#[allow(clippy::too_many_arguments)]
+fn paint_mode_surface_r(
+    ui: &Ui,
+    t: &LcarsTheme,
+    rect: Rect,
+    mode: Mode,
+    label: &str,
+    hovered: bool,
+    row: bool,
+    r: CornerRadius,
+) {
     let c = mode.colors();
     let p = ui
         .painter()
         .with_clip_rect(rect.expand(1.0).intersect(ui.clip_rect()));
     let (flat, center) = (row, !row);
-    let r = CornerRadius::same(4);
     let fill = if flat && mode == Mode::Inactive {
         palette::SURFACE
     } else {
@@ -883,6 +896,10 @@ pub fn toggle_button(
     base: Color32,
     size: Vec2,
 ) -> Response {
+    toggle_button_r(ui, t, label, on, base, size, CornerRadius::same(4))
+}
+
+fn toggle_button_r(ui: &mut Ui, t: &LcarsTheme, label: &str, on: &mut bool, base: Color32, size: Vec2, r: CornerRadius) -> Response {
     let (rect, mut resp) = ui.allocate_exact_size(size, Sense::click());
     if resp.clicked() {
         *on = !*on;
@@ -894,7 +911,6 @@ pub fn toggle_button(
     } else {
         fill
     };
-    let r = CornerRadius::same(4);
     let p = ui.painter();
     p.rect_filled(rect, r, fill);
     p.rect_stroke(
@@ -947,6 +963,27 @@ pub fn mode_button(
         );
     }
     resp
+}
+
+/// [PROJECT] P1c. Buttons in an elbow bar are square (radius 0); only the
+/// pills (end caps, detach pill) are rounded. Away from the elbows the
+/// radius-4 buttons above stay. This is [`mode_button`] for a bar.
+pub fn bar_mode_button(ui: &mut Ui, t: &LcarsTheme, label: &str, mode: &mut Mode, size: Vec2) -> Response {
+    let (rect, mut resp) = ui.allocate_exact_size(size, Sense::click());
+    if handle_mode(ui, &resp, mode) {
+        resp.mark_changed();
+    }
+    a11y(&resp, ui, label, *mode);
+    paint_mode_surface_r(ui, t, rect, *mode, label, resp.hovered(), false, CornerRadius::ZERO);
+    if resp.has_focus() {
+        ui.painter().rect_stroke(rect.expand(2.0), CornerRadius::ZERO, Stroke::new(1.0, t.text), egui::StrokeKind::Outside);
+    }
+    resp
+}
+
+/// [PROJECT] P1c. [`toggle_button`] for an elbow bar: square corners.
+pub fn bar_toggle_button(ui: &mut Ui, t: &LcarsTheme, label: &str, on: &mut bool, base: Color32, size: Vec2) -> Response {
+    toggle_button_r(ui, t, label, on, base, size, CornerRadius::ZERO)
 }
 
 /// [PROJECT] list with rows that behave like mode buttons (IMG3 style).

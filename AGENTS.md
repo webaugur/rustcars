@@ -30,6 +30,10 @@ Reference screenshots: IMG1 buttons (LOAD/SAVE/SCAN/DWELL), IMG2 tab palette (Tu
 - Implementation: `mode_button()`.
 - This replaces the pill-button guidance in §3 for function buttons. The LCARS frame segments and the header tab strip keep the solid muted IMG2 tab style (`lcars_button`), because they are frame chrome and navigation, not multi-mode functions.
 
+### P1c. Elbow-bar buttons are square
+- Every button that sits in an elbow bar (tabs, segments, keys moved into the bar) has **square corners (radius 0)**: `lcars_button(.., Cap::None, ..)`, `bar_mode_button`, `bar_toggle_button`. Only pills (an elbow's end cap, the detach pill) are rounded.
+- Away from the elbows, app-specific buttons keep the radius-4 rule of P1 / P1b.
+
 ### P1b. Toggle buttons
 - A button that **switches a state on and off** (Live, Data, Follow, Mute, Run…) is a toggle. Toggles get a **thin border** (`TOGGLE_BORDER` = 1.5 px, `StrokeKind::Inside`) so they read differently from momentary buttons.
 - **Momentary buttons** (◄ DAY, TODAY, −, +, FIT…) do something once and keep no state. They stay **solid filled with no outline**.
