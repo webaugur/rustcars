@@ -396,3 +396,26 @@ fn content_takes_clicks_maximized_snapped_and_restored() {
         assert!(detached(&ctx), "a content click does not dock");
     }
 }
+
+
+/// The window manager maximizes the detached window (super+Up): the
+/// window's own pass sends Maximized(false) at once; snaps are left alone.
+#[test]
+fn a_maximized_detached_window_is_restored_and_snaps_are_not() {
+    let (ctx, win) = setup();
+    detach_from_main(&ctx, &win, false);
+    {
+        let mut w = win.borrow_mut();
+        w.at = pos2(0.0, 0.0);
+        w.size = Some(vec2(1920.0, 1050.0));
+        w.maximized = true;
+    }
+    frame(&ctx, vec![], false);
+    assert!(win.borrow().commands.contains(&egui::ViewportCommand::Maximized(false)), "{:?}", win.borrow().commands);
+    win.borrow_mut().maximized = false;
+    win.borrow_mut().size = Some(vec2(960.0, 1050.0));
+    frame(&ctx, vec![], false);
+    assert!(!win.borrow().commands.iter().any(|c| matches!(c, egui::ViewportCommand::Maximized(_))), "half snap untouched");
+    let b = win.borrow().builders.last().cloned().unwrap();
+    assert_eq!(b.maximize_button, Some(false));
+}

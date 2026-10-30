@@ -410,6 +410,22 @@ pub fn drag_cmds(info: &egui::ViewportInfo) -> Vec<egui::ViewportCommand> {
     v
 }
 
+/// A detached window is never left maximized or fullscreen: on GNOME
+/// Wayland a window that covers the main window starves the main window of
+/// frames, and a detached window is an immediate viewport that only runs
+/// inside the main window's frame, so it would stop taking input. Returns
+/// the commands that undo either state (empty when neither is set).
+pub fn unmaximize_cmds(info: &egui::ViewportInfo) -> Vec<egui::ViewportCommand> {
+    let mut v = Vec::new();
+    if info.fullscreen == Some(true) {
+        v.push(egui::ViewportCommand::Fullscreen(false));
+    }
+    if info.maximized == Some(true) {
+        v.push(egui::ViewportCommand::Maximized(false));
+    }
+    v
+}
+
 /// Largest share of the monitor a saved detached window may take. GNOME's
 /// mutter auto-maximizes a new window that nearly fills the work area
 /// (`org.gnome.mutter auto-maximize`, on by default), so a window saved at
@@ -508,7 +524,10 @@ pub fn detached_window_in<R>(
         .with_title(title.to_uppercase())
         .with_decorations(false)
         .with_resizable(true)
-        .with_min_inner_size([240.0, 120.0]);
+        .with_min_inner_size([240.0, 120.0])
+        // Never maximized or fullscreen (see `unmaximize_cmds`). Tiling
+        // (half / quarter snaps) stays the window manager's.
+        .with_maximize_button(false);
     // Place and size only when the window opens; afterwards the window
     // manager owns them (see `DetachState::open`).
     if !state.open {
@@ -536,6 +555,10 @@ pub fn detached_window_in<R>(
         ui.ctx().data_mut(|d| d.insert_temp(flag, native));
         let closing = ui.input(|i| i.viewport().close_requested());
         let info = ui.input(|i| i.viewport().clone());
+        // Read above, act here (no ctx call inside the input closure).
+        for cmd in unmaximize_cmds(&info) {
+            ui.ctx().send_viewport_cmd(cmd);
+        }
         if closing {
             attach = true;
         }
