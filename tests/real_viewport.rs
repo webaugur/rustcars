@@ -19,6 +19,7 @@ struct Win {
     shapes: Vec<egui::epaint::ClippedShape>,
     commands: Vec<egui::ViewportCommand>,
     runs: u32,
+    maximized: bool,
 }
 
 fn vps(id: ViewportId, size: egui::Vec2) -> egui::ViewportIdMap<egui::ViewportInfo> {
@@ -45,10 +46,17 @@ fn setup() -> (egui::Context, Rc<RefCell<Win>>) {
         let time = w.borrow().time;
         let at = w.borrow().at;
         let size = w.borrow().size.unwrap_or(vec2(720.0, 480.0));
+        let mut viewports = vps_at(vp.ids.this, at, size);
+        let max = w.borrow().maximized;
+        for i in viewports.values_mut() {
+            i.maximized = Some(max);
+            i.focused = Some(true);
+            i.monitor_size = Some(vec2(1920.0, 1080.0));
+        }
         let input = RawInput {
             time: Some(time),
             viewport_id: vp.ids.this,
-            viewports: vps_at(vp.ids.this, at, size),
+            viewports,
             screen_rect: Some(Rect::from_min_size(Pos2::ZERO, size)),
             events,
             ..Default::default()
@@ -97,7 +105,9 @@ fn frame(ctx: &egui::Context, main_events: Vec<Event>, two_passes: bool) -> Rect
             if st.detached {
                 let m = Metrics::default();
                 detached_window(ui.ctx(), id, &m, TITLE, palette::TAN, &mut st, |ui| {
-                    ui.label("CONTENT");
+                    if ui.button("CONTENT").clicked() {
+                        CONTENT_CLICKS.with(|c| *c.borrow_mut() += 1);
+                    }
                 });
                 st.store(ui.ctx(), id);
             }
@@ -107,6 +117,10 @@ fn frame(ctx: &egui::Context, main_events: Vec<Event>, two_passes: bool) -> Rect
     let root_cmds: Vec<_> = out.viewport_output.iter().map(|(id, v)| (*id, v.commands.clone())).collect();
     ROOT_CMDS.with(|c| c.borrow_mut().extend(root_cmds));
     main_pill
+}
+
+thread_local! {
+    static CONTENT_CLICKS: RefCell<u32> = const { RefCell::new(0) };
 }
 
 thread_local! {
@@ -330,5 +344,55 @@ fn builder_places_the_window_only_when_it_opens() {
         win.borrow_mut().builders.clear();
         frame(&ctx, vec![], two);
         assert_eq!(win.borrow().builders[0].position, Some(pos2(400.0, 300.0)), "reopens where it was");
+    }
+}
+
+
+fn content_rect(win: &Rc<RefCell<Win>>) -> Rect {
+    win.borrow()
+        .shapes
+        .iter()
+        .filter_map(|c| match &c.shape {
+            Shape::Text(t) if t.galley.text() == "CONTENT" => Some(t.visual_bounding_rect()),
+            _ => None,
+        })
+        .next()
+        .expect("content painted")
+}
+
+/// Maximized, half and quarter snapped, then restored: a click on the
+/// window's content still reaches it every time, through the real nested
+/// immediate-viewport path with the window's own input.
+#[test]
+fn content_takes_clicks_maximized_snapped_and_restored() {
+    let (ctx, win) = setup();
+    detach_from_main(&ctx, &win, false);
+    assert!(detached(&ctx));
+    for (at, size, max) in [
+        (pos2(0.0, 0.0), vec2(1920.0, 1050.0), true),
+        (pos2(0.0, 30.0), vec2(960.0, 1050.0), false),
+        (pos2(960.0, 30.0), vec2(960.0, 525.0), false),
+        (pos2(300.0, 200.0), vec2(720.0, 480.0), false),
+    ] {
+        {
+            let mut w = win.borrow_mut();
+            w.at = at;
+            w.size = Some(size);
+            w.maximized = max;
+        }
+        frame(&ctx, vec![], false);
+        frame(&ctx, vec![], false);
+        let r = content_rect(&win);
+        assert!(Rect::from_min_size(Pos2::ZERO, size).contains_rect(r), "content inside the window at {size:?}: {r:?}");
+        let before = CONTENT_CLICKS.with(|c| *c.borrow());
+        let p = r.center();
+        for ev in [vec![Event::PointerMoved(p)], vec![btn(p, true)], vec![btn(p, false)], vec![]] {
+            win.borrow_mut().time += 0.05;
+            win.borrow_mut().events = ev;
+            frame(&ctx, vec![], false);
+        }
+        let after = CONTENT_CLICKS.with(|c| *c.borrow());
+        assert_eq!(after, before + 1, "click reached the content at {size:?} maximized={max}");
+        assert!(detached(&ctx), "a content click does not dock");
     }
 }

@@ -246,7 +246,12 @@ pub const PILL_BORDER: f32 = crate::TOGGLE_BORDER;
 pub fn detach_pill(ui: &mut Ui, rect: Rect, id: Id, color: Color32, title: &str, detached: bool) -> Response {
     let resp = ui.interact(rect, id, Sense::click_and_drag());
     if resp.drag_started() && in_native_detached_window(ui.ctx()) {
-        ui.ctx().send_viewport_cmd(egui::ViewportCommand::StartDrag);
+        // A maximized / fullscreen window cannot be moved by the window
+        // manager (GNOME, KWin by default): restore it first, then drag.
+        let info = ui.input(|i| i.viewport().clone());
+        for cmd in drag_cmds(&info) {
+            ui.ctx().send_viewport_cmd(cmd);
+        }
     }
     let r = (rect.height() / 2.0).clamp(0.0, 255.0) as u8;
     let cr = CornerRadius { nw: 0, sw: 0, ne: r, se: r };
@@ -391,6 +396,45 @@ pub fn in_native_detached_window(ctx: &egui::Context) -> bool {
     ctx.data(|d| d.get_temp::<bool>(id)).unwrap_or(false)
 }
 
+/// Commands for a pill drag in a native window: un-fullscreen and
+/// un-maximize first when needed, then the window-manager move.
+pub fn drag_cmds(info: &egui::ViewportInfo) -> Vec<egui::ViewportCommand> {
+    let mut v = Vec::new();
+    if info.fullscreen == Some(true) {
+        v.push(egui::ViewportCommand::Fullscreen(false));
+    }
+    if info.maximized == Some(true) {
+        v.push(egui::ViewportCommand::Maximized(false));
+    }
+    v.push(egui::ViewportCommand::StartDrag);
+    v
+}
+
+/// Largest share of the monitor a saved detached window may take. GNOME's
+/// mutter auto-maximizes a new window that nearly fills the work area
+/// (`org.gnome.mutter auto-maximize`, on by default), so a window saved at
+/// monitor size reopened maximized and its pill could not drag it.
+pub const SAVED_MAX_SHARE: f32 = 0.8;
+
+/// The size and position to remember for a detached window, from its
+/// viewport info. Nothing is saved while it is maximized, fullscreen or
+/// minimized (that is the WM's size, not the user's); a saved size is
+/// capped at [`SAVED_MAX_SHARE`] of the monitor.
+pub fn geometry_to_save(info: &egui::ViewportInfo) -> (Option<Vec2>, Option<egui::Pos2>) {
+    if info.maximized == Some(true) || info.fullscreen == Some(true) || info.minimized == Some(true) {
+        return (None, None);
+    }
+    let size = info.inner_rect.map(|r| r.size()).filter(|s| s.x >= 64.0 && s.y >= 64.0).map(|s| match info.monitor_size {
+        Some(m) if m.x > 0.0 && m.y > 0.0 => vec2(s.x.min(m.x * SAVED_MAX_SHARE), s.y.min(m.y * SAVED_MAX_SHARE)),
+        _ => s,
+    });
+    let pos = info.outer_rect.map(|r| {
+        let sz = r.size();
+        clamp_window_pos(r.min, sz, info.monitor_size)
+    });
+    (size, pos)
+}
+
 /// Size of the resize grip in a detached window's bottom-right corner.
 pub const RESIZE_GRIP: f32 = 14.0;
 
@@ -455,7 +499,9 @@ pub fn detached_window_in<R>(
     mut add: impl FnMut(&mut Ui) -> R,
     run: impl FnOnce(ViewportId, ViewportBuilder, &mut dyn FnMut(&mut Ui, bool)),
 ) -> Option<R> {
-    let _ = ctx;
+    // The parent window's monitor, read before any closure (no ctx calls
+    // inside input/data closures).
+    let monitor = ctx.input(|i| i.viewport().monitor_size);
     // Borderless: the elbow is the window's frame and its pill the handle.
     // Resizable with only a small minimum, so the window manager can snap it.
     let mut builder = ViewportBuilder::default()
@@ -466,7 +512,13 @@ pub fn detached_window_in<R>(
     // Place and size only when the window opens; afterwards the window
     // manager owns them (see `DetachState::open`).
     if !state.open {
-        builder = builder.with_inner_size(state.size.unwrap_or(vec2(720.0, 480.0)));
+        // Opens restored, never maximized (even when the main window is).
+        // A size saved by an older version while maximized is capped too.
+        let mut size = state.size.unwrap_or(vec2(720.0, 480.0));
+        if let Some(m) = monitor.filter(|m| m.x > 0.0 && m.y > 0.0) {
+            size = vec2(size.x.min(m.x * SAVED_MAX_SHARE), size.y.min(m.y * SAVED_MAX_SHARE));
+        }
+        builder = builder.with_maximized(false).with_inner_size(size);
         if let Some(pos) = state.pos {
             builder = builder.with_position(pos);
         }
@@ -518,12 +570,12 @@ pub fn detached_window_in<R>(
                 ui.ctx().send_viewport_cmd(egui::ViewportCommand::BeginResize(egui::ResizeDirection::SouthEast));
             }
         }
-        if let Some(s) = info.inner_rect.map(|r| r.size()).filter(|s| s.x >= 64.0 && s.y >= 64.0) {
-            size = Some(s);
+        let (s, p) = geometry_to_save(&info);
+        if s.is_some() {
+            size = s;
         }
-        if let Some(p) = info.outer_rect.map(|r| r.min) {
-            let sz = info.outer_rect.map(|r| r.size()).unwrap_or(vec2(720.0, 480.0));
-            pos = Some(clamp_window_pos(p, sz, info.monitor_size));
+        if p.is_some() {
+            pos = p;
         }
         ui.ctx().data_mut(|d| d.insert_temp(flag, was));
     };
